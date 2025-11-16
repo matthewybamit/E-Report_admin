@@ -1,0 +1,56 @@
+// src/App.jsx
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider } from './context/useAuth';
+import { Toaster } from 'react-hot-toast';
+import ProtectedRoute from './utils/ProtectedRoute';
+
+// Import Pages
+import Login from './pages/Login';
+import Dashboard from './pages/Dashboard';
+import Reports from './pages/Reports';
+// Layout Component
+import AdminLayout from './components/AdminLayout';
+
+function App() {
+  return (
+    <AuthProvider>
+      <BrowserRouter>
+        <Routes>
+          {/* Public Routes */}
+          <Route path="/login" element={<Login />} />
+          {/* Protected Routes */}
+          <Route
+            path="/"
+            element={
+              <ProtectedRoute>
+                <AdminLayout />
+              </ProtectedRoute>
+            }
+          >
+            <Route index element={<Navigate to="/dashboard" replace />} />
+            <Route path="dashboard" element={<Dashboard />} />
+            <Route path="reports" element={<Reports />} />
+
+            {/* Add more routes here as needed */}
+          </Route>
+
+          {/* Catch all - redirect to dashboard */}
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        </Routes>
+
+        <Toaster
+          position="top-right"
+          toastOptions={{
+            duration: 3000,
+            style: {
+              background: '#363636',
+              color: '#fff',
+            },
+          }}
+        />
+      </BrowserRouter>
+    </AuthProvider>
+  );
+}
+
+export default App;
