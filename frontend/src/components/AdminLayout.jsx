@@ -112,7 +112,7 @@ export default function AdminLayout() {
   const isActive = (path) => location.pathname === path;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 flex">
+    <div className="min-h-screen bg-linear-to-br from-gray-50 via-white to-gray-50 flex">
       {/* Dynamic Sidebar with Follow Effect */}
       <aside
         className={`fixed lg:sticky lg:top-0 lg:h-screen inset-y-0 left-0 z-50 w-72 bg-white/80 backdrop-blur-xl border-r border-gray-200/50 shadow-xl transform transition-all duration-300 ease-out ${
@@ -127,8 +127,8 @@ export default function AdminLayout() {
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-3 group cursor-pointer">
                 <div className="relative">
-                  <div className="absolute inset-0 bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl blur-sm opacity-50 group-hover:opacity-75 transition-opacity"></div>
-                  <div className={`relative bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl shadow-lg transform group-hover:scale-105 transition-all duration-300 ${
+                  <div className="absolute inset-0 bg-linear-to-br from-blue-600 to-blue-700 rounded-xl blur-sm opacity-50 group-hover:opacity-75 transition-opacity"></div>
+                  <div className={`relative bg-linear-to-br from-blue-600 to-blue-700 rounded-xl shadow-lg transform group-hover:scale-105 transition-all duration-300 ${
                     scrolled ? 'lg:p-2' : 'lg:p-2.5'
                   }`}>
                     <span className={`transition-all duration-300 ${scrolled ? 'lg:text-xl' : 'lg:text-2xl'}`}>🏠</span>
@@ -165,7 +165,7 @@ export default function AdminLayout() {
                     }}
                     className={`w-full group relative flex items-center justify-between px-3 py-2.5 rounded-xl transition-all duration-200 ${
                       active
-                        ? 'bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-lg shadow-blue-600/30'
+                        ? 'bg-linear-to-r from-blue-600 to-blue-700 text-white shadow-lg shadow-blue-600/30'
                         : 'text-gray-700 hover:bg-gray-100/80 hover:shadow-sm'
                     }`}
                   >
@@ -300,8 +300,8 @@ export default function AdminLayout() {
                   className="flex items-center space-x-3 px-3 py-2 hover:bg-gray-100 rounded-xl transition-all group"
                 >
                   <div className="relative">
-                    <div className="absolute inset-0 bg-gradient-to-br from-blue-600 to-blue-700 rounded-full blur-sm opacity-40"></div>
-                    <div className="relative w-10 h-10 bg-gradient-to-br from-blue-600 to-blue-700 rounded-full flex items-center justify-center text-white font-bold shadow-lg ring-2 ring-white">
+                    <div className="absolute inset-0 bg-linear-to-br from-blue-600 to-blue-700 rounded-full blur-sm opacity-40"></div>
+                    <div className="relative w-10 h-10 bg-linear-to-br from-blue-600 to-blue-700 rounded-full flex items-center justify-center text-white font-bold shadow-lg ring-2 ring-white">
                       {user?.name?.charAt(0).toUpperCase() || 'A'}
                     </div>
                     <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 rounded-full border-2 border-white shadow-sm"></div>

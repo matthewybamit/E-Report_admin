@@ -8,6 +8,10 @@ import ProtectedRoute from './utils/ProtectedRoute';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Reports from './pages/Reports';
+import Emergency from './pages/Emergency'; // ← Make sure this import is here
+import Medical from './pages/Medical';
+import Announcements from './pages/Announcements';
+import Residents from './pages/Residents';
 // Layout Component
 import AdminLayout from './components/AdminLayout';
 
@@ -18,6 +22,7 @@ function App() {
         <Routes>
           {/* Public Routes */}
           <Route path="/login" element={<Login />} />
+
           {/* Protected Routes */}
           <Route
             path="/"
@@ -30,8 +35,10 @@ function App() {
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="reports" element={<Reports />} />
-
-            {/* Add more routes here as needed */}
+            <Route path="emergency" element={<Emergency />} />
+            <Route path="medical" element={<Medical />} />
+            <Route path="residents" element={<Residents />} />
+            <Route path="announcements" element={<Announcements />} />
           </Route>
 
           {/* Catch all - redirect to dashboard */}
