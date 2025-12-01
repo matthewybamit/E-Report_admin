@@ -1,6 +1,5 @@
 // src/components/AdminLayout.jsx
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../context/useAuth';
 import { useState, useEffect } from 'react';
 import {
   Home,
@@ -20,14 +19,29 @@ import {
   ChevronRight,
   ChevronDown,
 } from 'lucide-react';
+import { supabase } from '../config/supabase';
 
 export default function AdminLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [user, setUser] = useState(null);
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, logout } = useAuth();
+
+  // Get user data
+  useEffect(() => {
+    getCurrentUser();
+  }, []);
+
+  const getCurrentUser = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      setUser(user);
+    } catch (error) {
+      console.error('Error getting user:', error);
+    }
+  };
 
   // Detect scroll for dynamic effects
   useEffect(() => {
@@ -103,32 +117,41 @@ export default function AdminLayout() {
     },
   ];
 
-  const handleLogout = () => {
-    setUserMenuOpen(false);
-    logout();
-    navigate('/login');
+  const handleLogout = async () => {
+    try {
+      setUserMenuOpen(false);
+      await supabase.auth.signOut();
+      navigate('/login', { replace: true });
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
   };
 
   const isActive = (path) => location.pathname === path;
 
+  // Get user display name and email
+  const userName = user?.user_metadata?.name || user?.email?.split('@')[0] || 'Admin User';
+  const userEmail = user?.email || 'admin@barangay.gov';
+  const userInitial = userName.charAt(0).toUpperCase();
+
   return (
-    <div className="min-h-screen bg-linear-to-br from-gray-50 via-white to-gray-50 flex">
-      {/* Dynamic Sidebar with Follow Effect */}
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 flex">
+      {/* Dynamic Sidebar */}
       <aside
         className={`fixed lg:sticky lg:top-0 lg:h-screen inset-y-0 left-0 z-50 w-72 bg-white/80 backdrop-blur-xl border-r border-gray-200/50 shadow-xl transform transition-all duration-300 ease-out ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         } ${scrolled ? 'lg:shadow-2xl' : 'lg:shadow-xl'}`}
       >
         <div className="h-full flex flex-col overflow-hidden">
-          {/* Premium Logo Section */}
+          {/* Logo Section */}
           <div className={`p-6 border-b border-gray-200/50 transition-all duration-300 ${
             scrolled ? 'lg:py-4' : 'lg:py-6'
           }`}>
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-3 group cursor-pointer">
                 <div className="relative">
-                  <div className="absolute inset-0 bg-linear-to-br from-blue-600 to-blue-700 rounded-xl blur-sm opacity-50 group-hover:opacity-75 transition-opacity"></div>
-                  <div className={`relative bg-linear-to-br from-blue-600 to-blue-700 rounded-xl shadow-lg transform group-hover:scale-105 transition-all duration-300 ${
+                  <div className="absolute inset-0 bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl blur-sm opacity-50 group-hover:opacity-75 transition-opacity"></div>
+                  <div className={`relative bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl shadow-lg transform group-hover:scale-105 transition-all duration-300 ${
                     scrolled ? 'lg:p-2' : 'lg:p-2.5'
                   }`}>
                     <span className={`transition-all duration-300 ${scrolled ? 'lg:text-xl' : 'lg:text-2xl'}`}>🏠</span>
@@ -148,7 +171,7 @@ export default function AdminLayout() {
             </div>
           </div>
 
-          {/* Modern Navigation - Scrollable */}
+          {/* Navigation */}
           <nav className="flex-1 px-3 py-4 overflow-y-auto scrollbar-hide">
             <div className="space-y-1">
               <p className="text-xs font-bold text-gray-500 uppercase tracking-wider px-3 py-2 mb-1">
@@ -165,7 +188,7 @@ export default function AdminLayout() {
                     }}
                     className={`w-full group relative flex items-center justify-between px-3 py-2.5 rounded-xl transition-all duration-200 ${
                       active
-                        ? 'bg-linear-to-r from-blue-600 to-blue-700 text-white shadow-lg shadow-blue-600/30'
+                        ? 'bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-lg shadow-blue-600/30'
                         : 'text-gray-700 hover:bg-gray-100/80 hover:shadow-sm'
                     }`}
                   >
@@ -224,7 +247,7 @@ export default function AdminLayout() {
             </div>
           </nav>
 
-          {/* Enhanced Logout */}
+          {/* Logout */}
           <div className="p-3 border-t border-gray-200/50 bg-gray-50/50">
             <button
               onClick={handleLogout}
@@ -249,7 +272,7 @@ export default function AdminLayout() {
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-h-screen">
-        {/* Premium Top Navigation with User Profile */}
+        {/* Top Navigation */}
         <header className={`bg-white/80 backdrop-blur-xl border-b border-gray-200/50 sticky top-0 z-30 transition-all duration-300 ${
           scrolled ? 'shadow-md' : 'shadow-sm'
         }`}>
@@ -275,7 +298,7 @@ export default function AdminLayout() {
 
             {/* Right: Search + Notifications + User Profile */}
             <div className="flex items-center space-x-3">
-              {/* Enhanced Search */}
+              {/* Search */}
               <div className="hidden md:flex items-center space-x-2 px-4 py-2.5 bg-gray-100/80 hover:bg-gray-100 rounded-xl transition-all group cursor-pointer border border-gray-200/50 hover:border-gray-300/50 hover:shadow-sm">
                 <Search className="w-4 h-4 text-gray-400 group-hover:text-gray-600 transition-colors" />
                 <span className="text-sm text-gray-500 group-hover:text-gray-700 transition-colors">Search...</span>
@@ -284,7 +307,7 @@ export default function AdminLayout() {
                 </kbd>
               </div>
 
-              {/* Premium Notification Bell */}
+              {/* Notification Bell */}
               <button className="relative p-2.5 text-gray-600 hover:bg-gray-100 rounded-xl transition-all hover:shadow-sm group">
                 <Bell className="w-5 h-5 group-hover:text-blue-600 transition-colors" />
                 <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
@@ -300,18 +323,18 @@ export default function AdminLayout() {
                   className="flex items-center space-x-3 px-3 py-2 hover:bg-gray-100 rounded-xl transition-all group"
                 >
                   <div className="relative">
-                    <div className="absolute inset-0 bg-linear-to-br from-blue-600 to-blue-700 rounded-full blur-sm opacity-40"></div>
-                    <div className="relative w-10 h-10 bg-linear-to-br from-blue-600 to-blue-700 rounded-full flex items-center justify-center text-white font-bold shadow-lg ring-2 ring-white">
-                      {user?.name?.charAt(0).toUpperCase() || 'A'}
+                    <div className="absolute inset-0 bg-gradient-to-br from-blue-600 to-blue-700 rounded-full blur-sm opacity-40"></div>
+                    <div className="relative w-10 h-10 bg-gradient-to-br from-blue-600 to-blue-700 rounded-full flex items-center justify-center text-white font-bold shadow-lg ring-2 ring-white">
+                      {userInitial}
                     </div>
                     <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 rounded-full border-2 border-white shadow-sm"></div>
                   </div>
                   <div className="hidden lg:block text-left">
                     <p className="text-sm font-semibold text-gray-900">
-                      {user?.name || 'Admin User'}
+                      {userName}
                     </p>
                     <p className="text-xs text-gray-500">
-                      {user?.email || 'admin@barangay.gov'}
+                      {userEmail}
                     </p>
                   </div>
                   <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${
@@ -329,8 +352,8 @@ export default function AdminLayout() {
                     <div className="absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-xl border border-gray-200/50 py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
                       {/* User Info */}
                       <div className="px-4 py-3 border-b border-gray-100">
-                        <p className="text-sm font-semibold text-gray-900">{user?.name || 'Admin User'}</p>
-                        <p className="text-xs text-gray-500 mt-0.5">{user?.email || 'admin@barangay.gov'}</p>
+                        <p className="text-sm font-semibold text-gray-900">{userName}</p>
+                        <p className="text-xs text-gray-500 mt-0.5">{userEmail}</p>
                       </div>
 
                       {/* Menu Items */}
@@ -380,7 +403,7 @@ export default function AdminLayout() {
           <Outlet />
         </main>
 
-        {/* Modern Footer */}
+        {/* Footer */}
         <footer className="bg-white/50 backdrop-blur-sm border-t border-gray-200/50 px-6 py-4">
           <div className="flex items-center justify-between text-sm">
             <p className="text-gray-600 font-medium">
