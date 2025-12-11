@@ -1,4 +1,3 @@
-// src/pages/Login.jsx
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Lock, Mail, Eye, EyeOff, AlertCircle } from 'lucide-react';
@@ -24,10 +23,61 @@ export default function Login() {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
-        navigate('/dashboard', { replace: true });
+        // ✅ VERIFY USER IS ADMIN
+        const isAdmin = await verifyAdminUser(session.user.id);
+        if (isAdmin) {
+          navigate('/dashboard', { replace: true });
+        } else {
+          // Not an admin, sign out
+          await supabase.auth.signOut();
+        }
       }
     } catch (error) {
       console.error('Auth check error:', error);
+    }
+  };
+
+  // ✅ NEW: Verify user is in admin_users table
+ // Add this inside verifyAdminUser function after line 47
+const verifyAdminUser = async (userId) => {
+  try {
+    console.log('🔍 Checking admin for user ID:', userId); // ADD THIS
+    
+    const { data, error } = await supabase
+      .from('admin_users')
+      .select('id, email, full_name, role, is_active')
+      .eq('auth_user_id', userId)
+      .eq('is_active', true)
+      .single();
+
+    console.log('📊 Admin query result:', { data, error }); // ADD THIS
+
+    if (error || !data) {
+      console.error('Admin verification failed:', error);
+      return false;
+    }
+
+    return true;
+  } catch (err) {
+    console.error('Admin check error:', err);
+    return false;
+  }
+};
+
+
+  // ✅ NEW: Update last login timestamp
+  const updateLastLogin = async (userId) => {
+    try {
+      const { error } = await supabase
+        .from('admin_users')
+        .update({ last_login: new Date().toISOString() })
+        .eq('auth_user_id', userId);
+
+      if (error) {
+        console.error('Failed to update last login:', error);
+      }
+    } catch (err) {
+      console.error('Last login update error:', err);
     }
   };
 
@@ -49,6 +99,7 @@ export default function Login() {
     }
 
     try {
+      // Step 1: Sign in with Supabase Auth
       const { data, error: signInError } = await supabase.auth.signInWithPassword({
         email: formData.email,
         password: formData.password,
@@ -56,18 +107,35 @@ export default function Login() {
 
       if (signInError) {
         setError(signInError.message);
+        setLoading(false);
         return;
       }
 
-      if (data.session) {
-        // Store session in localStorage (optional, Supabase does this automatically)
-        localStorage.setItem('supabase_session', JSON.stringify(data.session));
-        navigate('/dashboard', { replace: true });
+      if (!data.session || !data.user) {
+        setError('Login failed. Please try again.');
+        setLoading(false);
+        return;
       }
+
+      // ✅ Step 2: VERIFY USER IS IN ADMIN_USERS TABLE
+      const isAdmin = await verifyAdminUser(data.user.id);
+
+      if (!isAdmin) {
+        // User authenticated but NOT an admin
+        await supabase.auth.signOut();
+        setError('Access denied. You are not authorized to access the admin dashboard.');
+        setLoading(false);
+        return;
+      }
+
+      // ✅ Step 3: Update last login timestamp
+      await updateLastLogin(data.user.id);
+
+      // ✅ Step 4: Navigate to dashboard
+      navigate('/dashboard', { replace: true });
     } catch (err) {
       console.error('Login error:', err);
       setError('An error occurred. Please try again.');
-    } finally {
       setLoading(false);
     }
   };
@@ -164,20 +232,9 @@ export default function Login() {
             </button>
           </form>
 
-          <div className="mt-6 text-center">
-            <p className="text-sm text-gray-600">
-              Don't have an account?{' '}
-              <button
-                onClick={() => navigate('/signup')}
-                className="text-blue-600 font-semibold hover:underline"
-              >
-                Sign Up
-              </button>
-            </p>
-          </div>
 
           <p className="mt-4 text-center text-xs text-gray-500">
-            Test Account: admin@test.com / password123
+            Admin Access Only
           </p>
         </div>
       </div>

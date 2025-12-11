@@ -11,6 +11,10 @@ import Emergency from './pages/Emergency';
 import Medical from './pages/Medical';
 import Announcements from './pages/Announcements';
 import Residents from './pages/Residents';
+import Evidence from './pages/Evidence';
+import EmergencyEvidence from './pages/EmergencyEvidence';
+import AuditLogs from './pages/AuditLogs';
+import AdminManagement from './pages/AdminManagement';
 
 // Layout Component
 import AdminLayout from './components/AdminLayout';
@@ -34,10 +38,14 @@ function App() {
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="reports" element={<Reports />} />
+          <Route path="evidence" element={<Evidence />} />
           <Route path="emergency" element={<Emergency />} />
+          <Route path="emergency-evidence" element={<EmergencyEvidence />} />
           <Route path="medical" element={<Medical />} />
           <Route path="residents" element={<Residents />} />
           <Route path="announcements" element={<Announcements />} />
+          <Route path="audit-logs" element={<AuditLogs />} />
+          <Route path="admin-users" element={<AdminManagement />} />
         </Route>
 
         {/* Catch all - redirect to dashboard */}

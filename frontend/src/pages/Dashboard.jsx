@@ -1,9 +1,9 @@
 // src/pages/Dashboard.jsx
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../config/supabase';
-import L from 'leaflet'; // Import Leaflet directly
-import 'leaflet/dist/leaflet.css'; // Import CSS
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 
 // Import Lucide Icons
 import {
@@ -20,17 +20,36 @@ import {
   ArrowRight,
   Loader2,
   MapPin,
-  ExternalLink
+  ExternalLink,
+  X,
+  Phone,
+  Mail,
+  User,
+  Navigation,
+  Image as ImageIcon,
+  Send,
+  Edit3,
+  TrendingUp,
+  TrendingDown,
+  Filter,
+  Download,
+  RefreshCw,
+  ChevronRight,
+  AlertTriangle,
+  Shield,
+  Package,
+  Wrench,
+  MessageSquare,
+  UserCheck
 } from 'lucide-react';
 
 // --- MAP CONFIGURATION ---
-// Center of Quezon City
 const QC_CENTER = [14.6760, 121.0437]; 
 const INITIAL_ZOOM = 13;
 
-// --- CUSTOM MARKER ICONS (Pure Leaflet) ---
+// --- CUSTOM MARKER ICONS ---
 const createCustomIcon = (color) => L.divIcon({
-  className: 'custom-pin', // We will add a small style for this below
+  className: 'custom-pin',
   html: `
     <div style="
       background-color: ${color};
@@ -53,56 +72,325 @@ const createCustomIcon = (color) => L.divIcon({
     </div>
   `,
   iconSize: [30, 42],
-  iconAnchor: [15, 42], // Tip of the pin
+  iconAnchor: [15, 42],
   popupAnchor: [0, -45]
 });
 
-const redIcon = createCustomIcon('#ef4444');   // Urgent
-const greenIcon = createCustomIcon('#22c55e'); // Resolved
-const blueIcon = createCustomIcon('#3b82f6');  // Normal
+const redIcon = createCustomIcon('#ef4444');
+const greenIcon = createCustomIcon('#22c55e');
+const blueIcon = createCustomIcon('#3b82f6');
+const orangeIcon = createCustomIcon('#f97316');
 
-// --- INTERACTIVE MAP COMPONENT (Pure Leaflet Version) ---
+// --- FULL REPORT VIEW MODAL ---
+function FullReportModal({ report, onClose, onUpdate }) {
+  const [imageZoomed, setImageZoomed] = useState(false);
+
+  if (!report) return null;
+
+  const handleQuickAction = async (action) => {
+    try {
+      let updates = {};
+      switch(action) {
+        case 'assign':
+          updates = { status: 'in-progress' };
+          break;
+        case 'resolve':
+          updates = { status: 'resolved', resolved_at: new Date().toISOString() };
+          break;
+        case 'reject':
+          updates = { status: 'rejected' };
+          break;
+      }
+      
+      await supabase.from('reports').update(updates).eq('id', report.id);
+      onUpdate();
+      alert(`Report ${action}ed successfully!`);
+    } catch (error) {
+      console.error('Quick action error:', error);
+      alert('Failed to update report');
+    }
+  };
+
+  const categoryIcons = {
+    security: Shield,
+    infrastructure: Wrench,
+    sanitation: Package,
+    other: AlertTriangle
+  };
+  const CategoryIcon = categoryIcons[report.category] || AlertTriangle;
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4 animate-in fade-in duration-200">
+      <div className="bg-white rounded-3xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden animate-in zoom-in-95 duration-200">
+        {/* Header */}
+        <div className="bg-gradient-to-r from-blue-600 to-indigo-700 px-8 py-6">
+          <div className="flex items-start justify-between">
+            <div className="flex-1">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="bg-white/20 p-2 rounded-lg">
+                  <CategoryIcon className="w-5 h-5 text-white" />
+                </div>
+                <h2 className="text-2xl font-bold text-white">{report.title}</h2>
+              </div>
+              <p className="text-blue-100 text-sm">{report.report_number}</p>
+              <div className="flex gap-2 mt-3">
+                <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                  report.status === 'resolved' ? 'bg-green-100 text-green-800' :
+                  report.status === 'in-progress' ? 'bg-blue-100 text-blue-800' :
+                  report.status === 'rejected' ? 'bg-red-100 text-red-800' :
+                  'bg-yellow-100 text-yellow-800'
+                }`}>
+                  {report.status}
+                </span>
+                <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                  report.priority === 'urgent' ? 'bg-red-100 text-red-800' :
+                  report.priority === 'high' ? 'bg-orange-100 text-orange-800' :
+                  'bg-gray-100 text-gray-800'
+                }`}>
+                  {report.priority}
+                </span>
+              </div>
+            </div>
+            <button 
+              onClick={onClose}
+              className="text-white/80 hover:text-white hover:bg-white/20 p-2 rounded-xl transition-all"
+            >
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="p-8 space-y-6 max-h-[calc(90vh-200px)] overflow-y-auto">
+          {/* Quick Actions */}
+          {report.status === 'pending' && (
+            <div className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-xl p-4 border-2 border-purple-200">
+              <p className="text-sm font-bold text-purple-900 mb-3">Quick Actions</p>
+              <div className="flex gap-2">
+                <button 
+                  onClick={() => handleQuickAction('assign')}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold text-sm"
+                >
+                  <Send className="w-4 h-4" />
+                  Assign to Responder
+                </button>
+                <button 
+                  onClick={() => handleQuickAction('resolve')}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-semibold text-sm"
+                >
+                  <CheckCircle className="w-4 h-4" />
+                  Mark Resolved
+                </button>
+                <button 
+                  onClick={() => handleQuickAction('reject')}
+                  className="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 font-semibold text-sm"
+                >
+                  Reject
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Reporter Info */}
+          <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-6 border border-blue-200">
+            <h3 className="font-bold text-gray-800 mb-4 flex items-center">
+              <User className="w-4 h-4 mr-2 text-blue-600" />
+              Reporter Information
+            </h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-xs text-blue-600 font-semibold mb-1">NAME</p>
+                <p className="font-semibold text-gray-900">{report.reporter_name}</p>
+              </div>
+              <div>
+                <p className="text-xs text-blue-600 font-semibold mb-1">PHONE</p>
+                <a href={`tel:${report.reporter_phone}`} className="text-blue-600 hover:text-blue-700 font-medium flex items-center">
+                  <Phone className="w-3 h-3 mr-1" />
+                  {report.reporter_phone}
+                </a>
+              </div>
+              <div className="col-span-2">
+                <p className="text-xs text-blue-600 font-semibold mb-1">EMAIL</p>
+                <a href={`mailto:${report.reporter_email}`} className="text-blue-600 hover:text-blue-700 font-medium flex items-center">
+                  <Mail className="w-3 h-3 mr-1" />
+                  {report.reporter_email}
+                </a>
+              </div>
+            </div>
+          </div>
+
+          {/* Report Details */}
+          <div className="bg-gray-50 rounded-xl p-6 border border-gray-200">
+            <h3 className="font-bold text-gray-800 mb-4 flex items-center">
+              <FileText className="w-4 h-4 mr-2 text-gray-600" />
+              Report Details
+            </h3>
+            <div className="space-y-4">
+              <div>
+                <p className="text-xs text-gray-500 font-semibold mb-1">CATEGORY</p>
+                <p className="font-semibold text-gray-900 capitalize">{report.category}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 font-semibold mb-1">DESCRIPTION</p>
+                <p className="text-gray-700 leading-relaxed">{report.description}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 font-semibold mb-1">SUBMITTED</p>
+                <p className="text-gray-700 flex items-center">
+                  <Clock className="w-3 h-3 mr-1" />
+                  {new Date(report.created_at).toLocaleString()}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Location */}
+          <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-6 border border-green-200">
+            <h3 className="font-bold text-gray-800 mb-4 flex items-center">
+              <MapPin className="w-4 h-4 mr-2 text-green-600" />
+              Location
+            </h3>
+            <div className="space-y-3">
+              <div>
+                <p className="text-xs text-green-600 font-semibold mb-1">ADDRESS</p>
+                <p className="font-medium text-gray-900">{report.location || 'Not provided'}</p>
+              </div>
+              {report.landmark && (
+                <div>
+                  <p className="text-xs text-green-600 font-semibold mb-1">LANDMARK</p>
+                  <p className="text-gray-700">{report.landmark}</p>
+                </div>
+              )}
+              {report.latitude && report.longitude && (
+                <a 
+                  href={`https://www.google.com/maps/search/?api=1&query=${report.latitude},${report.longitude}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-semibold text-sm"
+                >
+                  <Navigation className="w-4 h-4" />
+                  Open in Google Maps
+                </a>
+              )}
+            </div>
+          </div>
+
+          {/* Image */}
+          {report.image_url && (
+            <div>
+              <h3 className="font-bold text-gray-800 mb-3 flex items-center">
+                <ImageIcon className="w-4 h-4 mr-2" />
+                Evidence Photo
+              </h3>
+              <div 
+                onClick={() => setImageZoomed(true)}
+                className="relative group cursor-zoom-in overflow-hidden rounded-xl border-2 border-gray-200 hover:border-blue-400 transition-all"
+              >
+                <img 
+                  src={report.image_url} 
+                  alt="Report evidence" 
+                  className="w-full h-64 object-cover transition-transform duration-300 group-hover:scale-105"
+                />
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-all flex items-center justify-center">
+                  <div className="bg-white/90 px-3 py-1 rounded-lg opacity-0 group-hover:opacity-100 transition-all">
+                    <p className="text-sm font-semibold">Click to enlarge</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Admin Notes */}
+          {report.admin_notes && (
+            <div className="bg-purple-50 rounded-xl p-6 border border-purple-200">
+              <h3 className="font-bold text-gray-800 mb-3 flex items-center">
+                <MessageSquare className="w-4 h-4 mr-2 text-purple-600" />
+                Admin Notes
+              </h3>
+              <p className="text-gray-700 whitespace-pre-wrap">{report.admin_notes}</p>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="bg-gray-50 border-t border-gray-200 px-8 py-4 flex gap-3">
+          <button 
+            onClick={onClose}
+            className="px-6 py-2 bg-gray-200 hover:bg-gray-300 rounded-xl font-semibold text-gray-700"
+          >
+            Close
+          </button>
+          <button 
+            onClick={() => {
+              onClose();
+              window.open(`/reports?reportId=${report.id}`, '_blank');
+            }}
+            className="flex-1 flex items-center justify-center gap-2 px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold"
+          >
+            <Edit3 className="w-4 h-4" />
+            Edit in Reports Page
+          </button>
+        </div>
+      </div>
+
+      {/* Image Zoom Modal */}
+      {imageZoomed && (
+        <div 
+          className="fixed inset-0 z-[2100] bg-black/95 flex items-center justify-center p-4"
+          onClick={() => setImageZoomed(false)}
+        >
+          <button 
+            className="absolute top-6 right-6 text-white/80 hover:text-white bg-white/10 hover:bg-white/20 p-3 rounded-full"
+            onClick={() => setImageZoomed(false)}
+          >
+            <X className="w-8 h-8" />
+          </button>
+          <img 
+            src={report.image_url} 
+            alt="Evidence Full View" 
+            className="max-w-full max-h-[90vh] object-contain rounded-lg"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// --- INTERACTIVE MAP COMPONENT ---
 function InteractiveMap({ markers, selectedMarker, onMarkerClick }) {
   const mapContainerRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const markersLayerRef = useRef(null);
 
-  // 1. Initialize Map
   useEffect(() => {
-    if (mapInstanceRef.current) return; // Map already initialized
+    if (mapInstanceRef.current) return;
 
-    // Create Map Instance
     const map = L.map(mapContainerRef.current, {
-       zoomControl: false, // We'll move zoom control or hide it for clean UI
+       zoomControl: true,
        attributionControl: false
     }).setView(QC_CENTER, INITIAL_ZOOM);
 
-    // Add Tile Layer (This gives the "Google Maps" structure look)
     L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
       attribution: '&copy; OpenStreetMap, &copy; CARTO',
       maxZoom: 20
     }).addTo(map);
     
-    // Add Attribution manually to bottom right to keep it legal but clean
     L.control.attribution({ position: 'bottomright' }).addTo(map);
 
-    // Layer Group for Markers (so we can clear them easily)
     const layerGroup = L.layerGroup().addTo(map);
     markersLayerRef.current = layerGroup;
     mapInstanceRef.current = map;
 
-    // Cleanup on unmount
     return () => {
       map.remove();
       mapInstanceRef.current = null;
     };
   }, []);
 
-  // 2. Handle Markers Update
   useEffect(() => {
     if (!mapInstanceRef.current || !markersLayerRef.current) return;
 
-    // Clear existing markers
     markersLayerRef.current.clearLayers();
 
     markers.forEach(marker => {
@@ -112,6 +400,7 @@ function InteractiveMap({ markers, selectedMarker, onMarkerClick }) {
       if (lat && lng) {
         let icon = blueIcon;
         if (marker.priority === 'urgent') icon = redIcon;
+        else if (marker.priority === 'high') icon = orangeIcon;
         if (marker.status === 'resolved') icon = greenIcon;
 
         const leafletMarker = L.marker([lat, lng], { icon })
@@ -125,7 +414,6 @@ function InteractiveMap({ markers, selectedMarker, onMarkerClick }) {
         leafletMarker.on('click', () => onMarkerClick(marker));
         leafletMarker.addTo(markersLayerRef.current);
         
-        // If this is the selected marker, open its popup immediately
         if (selectedMarker?.id === marker.id) {
             leafletMarker.openPopup();
         }
@@ -133,7 +421,6 @@ function InteractiveMap({ markers, selectedMarker, onMarkerClick }) {
     });
   }, [markers, selectedMarker, onMarkerClick]);
 
-  // 3. Fly to Selected Marker
   useEffect(() => {
     if (selectedMarker && mapInstanceRef.current) {
       const lat = selectedMarker.latitude || selectedMarker.lat;
@@ -146,26 +433,17 @@ function InteractiveMap({ markers, selectedMarker, onMarkerClick }) {
 
   return (
     <div className="relative w-full h-full rounded-xl overflow-hidden shadow-inner border border-gray-300 z-0">
-      {/* Map Container Div */}
       <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />
-      
-      {/* Floating Label */}
       <div className="absolute top-3 right-3 z-[500] bg-white/90 backdrop-blur-sm px-3 py-1 rounded-md shadow-md border border-gray-200 text-xs font-semibold text-gray-600">
-         Quezon City Live View
+         🗺️ Quezon City Live View
       </div>
     </div>
   );
 }
 
-// --- Detail Card Component ---
+// --- MINI DETAIL CARD ---
 function MarkerDetailCard({ marker, onViewFull }) {
   if (!marker) return null;
-
-  const lat = marker.latitude || marker.lat;
-  const lng = marker.longitude || marker.lng;
-  const googleMapsUrl = lat && lng 
-    ? `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`
-    : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(marker.location + " Quezon City")}`;
 
   return (
     <div className="bg-white rounded-2xl shadow-xl border border-gray-200 p-6 animate-in fade-in slide-in-from-right-4 duration-300">
@@ -189,32 +467,18 @@ function MarkerDetailCard({ marker, onViewFull }) {
             <p className="text-sm text-gray-700 leading-relaxed line-clamp-3">{marker.description}</p>
         </div>
 
-        <div className="space-y-2">
-            <div className="flex items-center text-sm text-gray-600">
-                <MapPin className="w-4 h-4 mr-2 text-red-500" />
-                <span className="truncate font-medium">{marker.location || "No address provided"}</span>
-            </div>
-            <a 
-                href={googleMapsUrl} 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="flex items-center text-xs text-blue-600 hover:text-blue-800 hover:underline pl-6 font-medium transition-colors"
-            >
-                <ExternalLink className="w-3 h-3 mr-1" />
-                Open in Google Maps
-            </a>
-        </div>
-
         <div className="flex items-center gap-2 flex-wrap pt-2">
            <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold uppercase border ${
-              marker.status === 'resolved' ? 'bg-green-100 text-green-800 border-green-200' : 'bg-yellow-100 text-yellow-800 border-yellow-200'
+              marker.status === 'resolved' ? 'bg-green-100 text-green-800 border-green-200' : 
+              marker.status === 'in-progress' ? 'bg-blue-100 text-blue-800 border-blue-200' :
+              'bg-yellow-100 text-yellow-800 border-yellow-200'
            }`}>
               {marker.status}
            </span>
         </div>
 
         <button 
-            onClick={() => onViewFull(marker.id)}
+            onClick={() => onViewFull(marker)}
             className="w-full mt-4 flex items-center justify-center space-x-2 px-4 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 font-bold transition-all shadow-md hover:shadow-lg active:scale-95"
         >
           <Eye className="w-4 h-4" />
@@ -225,61 +489,122 @@ function MarkerDetailCard({ marker, onViewFull }) {
   );
 }
 
-// --- Main Dashboard Component ---
+// --- MAIN DASHBOARD ---
 export default function Dashboard() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [selectedMarker, setSelectedMarker] = useState(null);
+  const [viewingReport, setViewingReport] = useState(null);
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [filterPriority, setFilterPriority] = useState('all');
   
-  // Real Data State
   const [stats, setStats] = useState({
     totalReports: 0,
     activeUsers: 0,
     urgentReports: 0,
-    resolvedReports: 0
+    resolvedReports: 0,
+    pendingReports: 0,
+    inProgressReports: 0,
+    todayReports: 0,
+    weekTrend: 0
   });
   const [recentActivity, setRecentActivity] = useState([]);
   const [mapData, setMapData] = useState([]);
+  const [notifications, setNotifications] = useState([]);
 
   // Fetch Data
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+      const { count: totalReports } = await supabase.from('reports').select('*', { count: 'exact', head: true });
+      const { count: urgentReports } = await supabase.from('reports').select('*', { count: 'exact', head: true }).eq('priority', 'urgent').neq('status', 'resolved');
+      const { count: resolvedReports } = await supabase.from('reports').select('*', { count: 'exact', head: true }).eq('status', 'resolved');
+      const { count: pendingReports } = await supabase.from('reports').select('*', { count: 'exact', head: true }).eq('status', 'pending');
+      const { count: inProgressReports } = await supabase.from('reports').select('*', { count: 'exact', head: true }).eq('status', 'in-progress');
+      const { count: todayReports } = await supabase.from('reports').select('*', { count: 'exact', head: true }).gte('created_at', today);
+      const { count: activeUsers } = await supabase.from('admin_users').select('*', { count: 'exact', head: true });
+      const { count: lastWeekReports } = await supabase.from('reports').select('*', { count: 'exact', head: true }).gte('created_at', weekAgo);
+
+      const weekTrend = lastWeekReports > 0 ? Math.round(((todayReports - (lastWeekReports/7)) / (lastWeekReports/7)) * 100) : 0;
+
+      setStats({
+        totalReports: totalReports || 0,
+        urgentReports: urgentReports || 0,
+        resolvedReports: resolvedReports || 0,
+        pendingReports: pendingReports || 0,
+        inProgressReports: inProgressReports || 0,
+        activeUsers: activeUsers || 0,
+        todayReports: todayReports || 0,
+        weekTrend
+      });
+
+      const { data: activityData } = await supabase.from('reports').select('*').order('created_at', { ascending: false }).limit(8);
+      setRecentActivity(activityData || []);
+
+      let mapQuery = supabase.from('reports').select('*').limit(100);
+      if (filterStatus !== 'all') mapQuery = mapQuery.eq('status', filterStatus);
+      if (filterPriority !== 'all') mapQuery = mapQuery.eq('priority', filterPriority);
+      
+      const { data: mapItems } = await mapQuery;
+      setMapData(mapItems || []);
+
+      // Fetch urgent notifications
+      const { data: urgentNotifs } = await supabase
+        .from('reports')
+        .select('*')
+        .eq('priority', 'urgent')
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false })
+        .limit(5);
+      setNotifications(urgentNotifs || []);
+
+    } catch (error) {
+      console.error("Error loading dashboard:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchData = async () => {
-        setLoading(true);
-        try {
-            const { count: totalReports } = await supabase.from('reports').select('*', { count: 'exact', head: true });
-            const { count: urgentReports } = await supabase.from('reports').select('*', { count: 'exact', head: true }).eq('priority', 'urgent').neq('status', 'resolved');
-            const { count: resolvedReports } = await supabase.from('reports').select('*', { count: 'exact', head: true }).eq('status', 'resolved');
-            const { count: activeUsers } = await supabase.from('admin_users').select('*', { count: 'exact', head: true });
-
-            setStats({
-                totalReports: totalReports || 0,
-                urgentReports: urgentReports || 0,
-                resolvedReports: resolvedReports || 0,
-                activeUsers: activeUsers || 0
-            });
-
-            const { data: activityData } = await supabase.from('reports').select('*').order('created_at', { ascending: false }).limit(5);
-            setRecentActivity(activityData || []);
-
-            const { data: mapItems } = await supabase.from('reports').select('*').neq('status', 'resolved').limit(50);
-            setMapData(mapItems || []);
-        } catch (error) {
-            console.error("Error loading dashboard:", error);
-        } finally {
-            setLoading(false);
-        }
-    };
     fetchData();
     
-    const subscription = supabase.channel('dashboard-realtime').on('postgres_changes', { event: '*', schema: 'public', table: 'reports' }, () => fetchData()).subscribe();
+    const subscription = supabase
+      .channel('dashboard-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reports' }, () => fetchData())
+      .subscribe();
+    
     return () => subscription.unsubscribe();
-  }, []);
+  }, [filterStatus, filterPriority]);
 
-  const handleNavigateToReports = (id) => navigate(id ? `/reports?reportId=${id}` : '/reports');
+  // Check for reportId in URL on mount
+  useEffect(() => {
+    const reportId = searchParams.get('reportId');
+    if (reportId) {
+      const loadReport = async () => {
+        const { data } = await supabase.from('reports').select('*').eq('id', reportId).single();
+        if (data) setViewingReport(data);
+      };
+      loadReport();
+    }
+  }, [searchParams]);
 
-  const pendingPercent = stats.totalReports ? Math.round(((stats.totalReports - stats.resolvedReports - stats.urgentReports) / stats.totalReports) * 100) : 0;
+  const handleViewReport = async (reportOrId) => {
+    if (typeof reportOrId === 'string') {
+      const { data } = await supabase.from('reports').select('*').eq('id', reportOrId).single();
+      if (data) setViewingReport(data);
+    } else {
+      setViewingReport(reportOrId);
+    }
+  };
+
+  const pendingPercent = stats.totalReports ? Math.round((stats.pendingReports / stats.totalReports) * 100) : 0;
   const urgentPercent = stats.totalReports ? Math.round((stats.urgentReports / stats.totalReports) * 100) : 0;
   const resolvedPercent = stats.totalReports ? Math.round((stats.resolvedReports / stats.totalReports) * 100) : 0;
+  const inProgressPercent = stats.totalReports ? Math.round((stats.inProgressReports / stats.totalReports) * 100) : 0;
 
   return (
     <div className="p-6 space-y-6 max-w-[1800px] mx-auto">
@@ -292,85 +617,348 @@ export default function Dashboard() {
             Real-time monitoring • Quezon City
           </p>
         </div>
-        <button className="flex items-center space-x-2 px-4 py-2.5 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 font-semibold shadow-sm">
-           <Calendar className="w-4 h-4" /> <span>Today</span>
-        </button>
+        <div className="flex gap-2">
+          <button 
+            onClick={fetchData}
+            className="flex items-center space-x-2 px-4 py-2.5 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 font-semibold shadow-sm"
+          >
+            <RefreshCw className="w-4 h-4" />
+            <span>Refresh</span>
+          </button>
+          <button className="flex items-center space-x-2 px-4 py-2.5 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 font-semibold shadow-sm">
+            <Calendar className="w-4 h-4" />
+            <span>Today</span>
+          </button>
+        </div>
       </div>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-         <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
-            <div className="flex justify-between mb-4"><div className="bg-blue-50 p-3 rounded-xl"><FileText className="text-blue-600"/></div><span className="text-gray-500 font-bold text-xs uppercase">Total</span></div>
-            <p className="text-3xl font-bold">{stats.totalReports}</p>
-         </div>
-         <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
-            <div className="flex justify-between mb-4"><div className="bg-red-50 p-3 rounded-xl"><AlertCircle className="text-red-600"/></div><span className="text-red-500 font-bold text-xs uppercase animate-pulse">Urgent</span></div>
-            <p className="text-3xl font-bold">{stats.urgentReports}</p>
-         </div>
-         <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
-            <div className="flex justify-between mb-4"><div className="bg-green-50 p-3 rounded-xl"><Users className="text-green-600"/></div><span className="text-gray-500 font-bold text-xs uppercase">Users</span></div>
-            <p className="text-3xl font-bold">{stats.activeUsers}</p>
-         </div>
-         <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
-            <div className="flex justify-between mb-4"><div className="bg-purple-50 p-3 rounded-xl"><CheckCircle className="text-purple-600"/></div><span className="text-gray-500 font-bold text-xs uppercase">Resolved</span></div>
-            <p className="text-3xl font-bold">{stats.resolvedReports}</p>
-         </div>
+      {/* Enhanced Stats Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-4">
+        <div className="bg-gradient-to-br from-blue-500 to-blue-600 p-6 rounded-2xl shadow-lg text-white">
+          <div className="flex justify-between items-start mb-4">
+            <div className="bg-white/20 p-3 rounded-xl">
+              <FileText className="w-5 h-5" />
+            </div>
+            <span className="text-xs font-bold uppercase opacity-90">Total</span>
+          </div>
+          <p className="text-4xl font-bold mb-1">{stats.totalReports}</p>
+          <p className="text-xs opacity-80">All Reports</p>
+        </div>
+
+        <div className="bg-gradient-to-br from-red-500 to-red-600 p-6 rounded-2xl shadow-lg text-white animate-pulse">
+          <div className="flex justify-between items-start mb-4">
+            <div className="bg-white/20 p-3 rounded-xl">
+              <Zap className="w-5 h-5" />
+            </div>
+            <span className="text-xs font-bold uppercase opacity-90">Urgent</span>
+          </div>
+          <p className="text-4xl font-bold mb-1">{stats.urgentReports}</p>
+          <p className="text-xs opacity-80">Needs Attention</p>
+        </div>
+
+        <div className="bg-gradient-to-br from-yellow-500 to-orange-500 p-6 rounded-2xl shadow-lg text-white">
+          <div className="flex justify-between items-start mb-4">
+            <div className="bg-white/20 p-3 rounded-xl">
+              <Clock className="w-5 h-5" />
+            </div>
+            <span className="text-xs font-bold uppercase opacity-90">Pending</span>
+          </div>
+          <p className="text-4xl font-bold mb-1">{stats.pendingReports}</p>
+          <p className="text-xs opacity-80">Awaiting Action</p>
+        </div>
+
+        <div className="bg-gradient-to-br from-blue-400 to-cyan-500 p-6 rounded-2xl shadow-lg text-white">
+          <div className="flex justify-between items-start mb-4">
+            <div className="bg-white/20 p-3 rounded-xl">
+              <Activity className="w-5 h-5" />
+            </div>
+            <span className="text-xs font-bold uppercase opacity-90">Active</span>
+          </div>
+          <p className="text-4xl font-bold mb-1">{stats.inProgressReports}</p>
+          <p className="text-xs opacity-80">In Progress</p>
+        </div>
+
+        <div className="bg-gradient-to-br from-green-500 to-emerald-600 p-6 rounded-2xl shadow-lg text-white">
+          <div className="flex justify-between items-start mb-4">
+            <div className="bg-white/20 p-3 rounded-xl">
+              <CheckCircle className="w-5 h-5" />
+            </div>
+            <span className="text-xs font-bold uppercase opacity-90">Resolved</span>
+          </div>
+          <p className="text-4xl font-bold mb-1">{stats.resolvedReports}</p>
+          <p className="text-xs opacity-80">Completed</p>
+        </div>
+
+        <div className="bg-gradient-to-br from-purple-500 to-pink-500 p-6 rounded-2xl shadow-lg text-white">
+          <div className="flex justify-between items-start mb-4">
+            <div className="bg-white/20 p-3 rounded-xl">
+              <TrendingUp className="w-5 h-5" />
+            </div>
+            <span className="text-xs font-bold uppercase opacity-90">Today</span>
+          </div>
+          <p className="text-4xl font-bold mb-1">{stats.todayReports}</p>
+          <div className="flex items-center text-xs opacity-80">
+            {stats.weekTrend >= 0 ? <TrendingUp className="w-3 h-3 mr-1" /> : <TrendingDown className="w-3 h-3 mr-1" />}
+            <span>{Math.abs(stats.weekTrend)}% vs last week</span>
+          </div>
+        </div>
       </div>
+
+      {/* Urgent Alerts Banner */}
+      {notifications.length > 0 && (
+        <div className="bg-gradient-to-r from-red-600 to-orange-600 rounded-2xl p-6 shadow-lg text-white animate-in slide-in-from-top duration-500">
+          <div className="flex items-start justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className="bg-white/20 p-3 rounded-xl animate-pulse">
+                <Bell className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-bold text-xl">⚠️ Urgent Alerts</h3>
+                <p className="text-sm opacity-90 mt-1">{notifications.length} reports require immediate attention</p>
+              </div>
+            </div>
+            <button onClick={() => navigate('/reports?filter=urgent')} className="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg font-semibold text-sm flex items-center gap-2">
+              View All <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {notifications.slice(0, 4).map(notif => (
+              <div 
+                key={notif.id}
+                onClick={() => handleViewReport(notif)}
+                className="bg-white/10 hover:bg-white/20 rounded-xl p-4 cursor-pointer transition-all backdrop-blur-sm border border-white/20"
+              >
+                <p className="font-bold line-clamp-1 mb-1">{notif.title}</p>
+                <p className="text-sm opacity-90 line-clamp-1">{notif.location}</p>
+                <p className="text-xs opacity-75 mt-2">{new Date(notif.created_at).toLocaleTimeString()}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Main Content: Map + Sidebar */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Map Section */}
-        <div className="lg:col-span-8 space-y-6">
+        <div className="lg:col-span-8 space-y-4">
+          {/* Map Filters */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-2">
+                <Filter className="w-4 h-4 text-gray-600" />
+                <span className="font-semibold text-sm text-gray-700">Map Filters:</span>
+              </div>
+              <select 
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm font-medium"
+              >
+                <option value="all">All Status</option>
+                <option value="pending">Pending</option>
+                <option value="in-progress">In Progress</option>
+                <option value="resolved">Resolved</option>
+              </select>
+              <select 
+                value={filterPriority}
+                onChange={(e) => setFilterPriority(e.target.value)}
+                className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm font-medium"
+              >
+                <option value="all">All Priority</option>
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+                <option value="urgent">Urgent</option>
+              </select>
+              <div className="ml-auto text-sm font-semibold text-gray-600">
+                Showing {mapData.length} reports
+              </div>
+            </div>
+          </div>
+
           <div className="bg-white rounded-2xl shadow-md border border-gray-200 p-1 h-[600px] w-full z-0">
-              <InteractiveMap 
-                markers={mapData} 
-                selectedMarker={selectedMarker} 
-                onMarkerClick={setSelectedMarker} 
-              />
+            <InteractiveMap 
+              markers={mapData} 
+              selectedMarker={selectedMarker} 
+              onMarkerClick={setSelectedMarker} 
+            />
           </div>
           
           {selectedMarker && (
-             <div className="fixed bottom-6 right-6 w-96 z-[1100] lg:static lg:w-full lg:z-0">
-                <MarkerDetailCard marker={selectedMarker} onViewFull={handleNavigateToReports} />
-             </div>
+            <div className="lg:hidden fixed bottom-6 right-6 w-96 z-[1100]">
+              <MarkerDetailCard marker={selectedMarker} onViewFull={handleViewReport} />
+            </div>
           )}
         </div>
 
         {/* Right Sidebar */}
         <div className="lg:col-span-4 space-y-6">
+          {/* Selected Report Card - Desktop */}
+          {selectedMarker && (
+            <div className="hidden lg:block">
+              <MarkerDetailCard marker={selectedMarker} onViewFull={handleViewReport} />
+            </div>
+          )}
+
           {/* Status Overview */}
           <div className="bg-white rounded-2xl shadow-md border border-gray-200 p-6">
-            <h3 className="font-bold mb-6 text-gray-900">Status Overview</h3>
+            <h3 className="font-bold mb-6 text-gray-900 flex items-center justify-between">
+              <span>Status Distribution</span>
+              <Activity className="w-5 h-5 text-blue-600" />
+            </h3>
             <div className="space-y-4">
-               <div><div className="flex justify-between text-sm mb-1"><span>Pending</span><span className="text-blue-600">{pendingPercent}%</span></div><div className="h-2 bg-gray-100 rounded-full"><div style={{width:`${pendingPercent}%`}} className="h-full bg-blue-500 rounded-full"></div></div></div>
-               <div><div className="flex justify-between text-sm mb-1"><span>Urgent</span><span className="text-red-600">{urgentPercent}%</span></div><div className="h-2 bg-gray-100 rounded-full"><div style={{width:`${urgentPercent}%`}} className="h-full bg-red-500 rounded-full"></div></div></div>
-               <div><div className="flex justify-between text-sm mb-1"><span>Resolved</span><span className="text-green-600">{resolvedPercent}%</span></div><div className="h-2 bg-gray-100 rounded-full"><div style={{width:`${resolvedPercent}%`}} className="h-full bg-green-500 rounded-full"></div></div></div>
+              <div>
+                <div className="flex justify-between text-sm mb-2">
+                  <span className="font-semibold">Pending</span>
+                  <span className="text-yellow-600 font-bold">{pendingPercent}%</span>
+                </div>
+                <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
+                  <div style={{width:`${pendingPercent}%`}} className="h-full bg-gradient-to-r from-yellow-400 to-orange-500 rounded-full transition-all duration-500"></div>
+                </div>
+              </div>
+              <div>
+                <div className="flex justify-between text-sm mb-2">
+                  <span className="font-semibold">Urgent</span>
+                  <span className="text-red-600 font-bold">{urgentPercent}%</span>
+                </div>
+                <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
+                  <div style={{width:`${urgentPercent}%`}} className="h-full bg-gradient-to-r from-red-500 to-red-600 rounded-full transition-all duration-500"></div>
+                </div>
+              </div>
+              <div>
+                <div className="flex justify-between text-sm mb-2">
+                  <span className="font-semibold">In Progress</span>
+                  <span className="text-blue-600 font-bold">{inProgressPercent}%</span>
+                </div>
+                <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
+                  <div style={{width:`${inProgressPercent}%`}} className="h-full bg-gradient-to-r from-blue-400 to-cyan-500 rounded-full transition-all duration-500"></div>
+                </div>
+              </div>
+              <div>
+                <div className="flex justify-between text-sm mb-2">
+                  <span className="font-semibold">Resolved</span>
+                  <span className="text-green-600 font-bold">{resolvedPercent}%</span>
+                </div>
+                <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
+                  <div style={{width:`${resolvedPercent}%`}} className="h-full bg-gradient-to-r from-green-500 to-emerald-600 rounded-full transition-all duration-500"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Quick Actions */}
+          <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-2xl shadow-md border-2 border-indigo-200 p-6">
+            <h3 className="font-bold mb-4 text-gray-900 flex items-center">
+              <Zap className="w-5 h-5 mr-2 text-indigo-600" />
+              Quick Actions
+            </h3>
+            <div className="space-y-2">
+              <button 
+                onClick={() => navigate('/reports')}
+                className="w-full flex items-center justify-between p-3 bg-white hover:bg-gray-50 rounded-xl font-semibold text-sm text-gray-700 transition-all border border-gray-200 shadow-sm"
+              >
+                <span className="flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-blue-600" />
+                  View All Reports
+                </span>
+                <ChevronRight className="w-4 h-4" />
+              </button>
+              <button 
+                onClick={() => navigate('/reports?filter=urgent')}
+                className="w-full flex items-center justify-between p-3 bg-white hover:bg-gray-50 rounded-xl font-semibold text-sm text-gray-700 transition-all border border-gray-200 shadow-sm"
+              >
+                <span className="flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-red-600" />
+                  View Urgent Only
+                </span>
+                <ChevronRight className="w-4 h-4" />
+              </button>
+              <button 
+                onClick={() => navigate('/responders')}
+                className="w-full flex items-center justify-between p-3 bg-white hover:bg-gray-50 rounded-xl font-semibold text-sm text-gray-700 transition-all border border-gray-200 shadow-sm"
+              >
+                <span className="flex items-center gap-2">
+                  <UserCheck className="w-4 h-4 text-green-600" />
+                  Manage Responders
+                </span>
+                <ChevronRight className="w-4 h-4" />
+              </button>
+              <button 
+                className="w-full flex items-center justify-center gap-2 p-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl font-bold text-sm transition-all shadow-md"
+              >
+                <Download className="w-4 h-4" />
+                Export Report (CSV)
+              </button>
             </div>
           </div>
 
           {/* Recent Activity */}
           <div className="bg-white rounded-2xl shadow-md border border-gray-200 overflow-hidden">
-             <div className="p-4 border-b border-gray-100 bg-gray-50/50 flex justify-between">
-                <h3 className="font-bold text-gray-900">Recent Activity</h3>
-                <button onClick={()=>navigate('/reports')} className="text-xs text-blue-600 font-bold hover:underline">View All</button>
-             </div>
-             <div className="max-h-[400px] overflow-y-auto">
-                {loading ? <div className="p-8 flex justify-center"><Loader2 className="animate-spin"/></div> : 
-                 recentActivity.length === 0 ? <div className="p-8 text-center text-gray-500">No activity</div> :
-                 recentActivity.map(activity => (
-                    <div key={activity.id} onClick={()=>handleNavigateToReports(activity.id)} className="p-4 hover:bg-gray-50 border-b border-gray-50 cursor-pointer flex gap-3">
-                       <div className={`w-2 h-2 mt-2 rounded-full flex-shrink-0 ${activity.priority === 'urgent' ? 'bg-red-500' : 'bg-blue-500'}`}></div>
-                       <div>
-                          <p className="text-sm font-bold text-gray-900 line-clamp-1">{activity.title}</p>
-                          <p className="text-xs text-gray-500 line-clamp-1">{activity.description}</p>
-                       </div>
+            <div className="p-4 border-b border-gray-100 bg-gradient-to-r from-gray-50 to-gray-100 flex justify-between items-center">
+              <h3 className="font-bold text-gray-900 flex items-center">
+                <Clock className="w-4 h-4 mr-2 text-gray-600" />
+                Recent Activity
+              </h3>
+              <button onClick={()=>navigate('/reports')} className="text-xs text-blue-600 font-bold hover:underline flex items-center gap-1">
+                View All <ChevronRight className="w-3 h-3" />
+              </button>
+            </div>
+            <div className="max-h-[500px] overflow-y-auto">
+              {loading ? (
+                <div className="p-8 flex justify-center">
+                  <Loader2 className="animate-spin w-6 h-6 text-blue-600" />
+                </div>
+              ) : recentActivity.length === 0 ? (
+                <div className="p-8 text-center text-gray-500">No activity</div>
+              ) : (
+                recentActivity.map(activity => (
+                  <div 
+                    key={activity.id} 
+                    onClick={() => handleViewReport(activity)}
+                    className="p-4 hover:bg-blue-50 border-b border-gray-50 cursor-pointer transition-all flex gap-3 group"
+                  >
+                    <div className={`w-2 h-2 mt-2 rounded-full flex-shrink-0 ${
+                      activity.priority === 'urgent' ? 'bg-red-500 animate-pulse' : 
+                      activity.priority === 'high' ? 'bg-orange-500' : 
+                      'bg-blue-500'
+                    }`}></div>
+                    <div className="flex-1">
+                      <p className="text-sm font-bold text-gray-900 line-clamp-1 group-hover:text-blue-600">
+                        {activity.title}
+                      </p>
+                      <p className="text-xs text-gray-500 line-clamp-1 mt-0.5">{activity.description}</p>
+                      <div className="flex items-center gap-2 mt-2">
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+                          activity.status === 'resolved' ? 'bg-green-100 text-green-700' :
+                          activity.status === 'in-progress' ? 'bg-blue-100 text-blue-700' :
+                          'bg-yellow-100 text-yellow-700'
+                        }`}>
+                          {activity.status}
+                        </span>
+                        <span className="text-xs text-gray-400">
+                          {new Date(activity.created_at).toLocaleDateString()}
+                        </span>
+                      </div>
                     </div>
-                 ))
-                }
-             </div>
+                    <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-blue-600 transition-all" />
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         </div>
       </div>
+
+      {/* Full Report Modal */}
+      {viewingReport && (
+        <FullReportModal 
+          report={viewingReport} 
+          onClose={() => setViewingReport(null)}
+          onUpdate={() => {
+            fetchData();
+            setViewingReport(null);
+          }}
+        />
+      )}
     </div>
   );
 }

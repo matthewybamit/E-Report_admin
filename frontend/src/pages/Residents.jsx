@@ -1,5 +1,5 @@
 // src/pages/Residents.jsx
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Search,
   Eye,
@@ -20,118 +20,12 @@ import {
   Flag,
   Activity,
   Clock,
+  Loader2,
 } from 'lucide-react';
+import { supabase } from '../config/supabase';
 
-// Mock Residents Data - Emergency System (All Active by Default)
-const mockResidents = [
-  {
-    id: 'USR-2025-001',
-    firstName: 'Juan',
-    lastName: 'Dela Cruz',
-    email: 'juan.delacruz@email.com',
-    phone: '+63 912 345 6789',
-    dateOfBirth: '1985-05-15',
-    gender: 'Male',
-    address: 'Block 5, Main Street, Zone 2',
-    purok: 'Purok 2',
-    barangay: 'Barangay Central',
-    city: 'Quezon City',
-    zipCode: '1100',
-    emergencyContactName: 'Maria Dela Cruz',
-    emergencyContactPhone: '+63 923 456 7890',
-    registeredOn: '2025-11-10T14:30:00',
-    status: 'active',
-    verified: true,
-    accountType: 'resident',
-    submissionsCount: 12,
-  },
-  {
-    id: 'USR-2025-002',
-    firstName: 'Maria',
-    lastName: 'Santos',
-    email: 'maria.santos@email.com',
-    phone: '+63 923 456 7891',
-    dateOfBirth: '1990-08-22',
-    gender: 'Female',
-    address: 'Zone 3, House 12, Purok 3',
-    purok: 'Purok 3',
-    barangay: 'Barangay Central',
-    city: 'Quezon City',
-    zipCode: '1100',
-    emergencyContactName: 'Pedro Santos',
-    emergencyContactPhone: '+63 934 567 8902',
-    registeredOn: '2025-11-08T09:15:00',
-    status: 'active',
-    verified: true,
-    accountType: 'resident',
-    submissionsCount: 5,
-  },
-  {
-    id: 'USR-2025-003',
-    firstName: 'Pedro',
-    lastName: 'Garcia',
-    email: 'pedro.garcia@email.com',
-    phone: '+63 934 567 8903',
-    dateOfBirth: '1978-03-10',
-    gender: 'Male',
-    address: 'Block 2, Unit 5, Zone 1',
-    purok: 'Purok 1',
-    barangay: 'Barangay Central',
-    city: 'Quezon City',
-    zipCode: '1100',
-    emergencyContactName: 'Ana Garcia',
-    emergencyContactPhone: '+63 945 678 9013',
-    registeredOn: '2025-11-05T16:45:00',
-    status: 'active',
-    verified: false,
-    accountType: 'resident',
-    submissionsCount: 2,
-  },
-  {
-    id: 'USR-2025-004',
-    firstName: 'Ana',
-    lastName: 'Lopez',
-    email: 'ana.lopez@email.com',
-    phone: '+63 945 678 9014',
-    dateOfBirth: '1995-12-05',
-    gender: 'Female',
-    address: 'Zone 1, Lot 8, Purok 5',
-    purok: 'Purok 5',
-    barangay: 'Barangay Central',
-    city: 'Quezon City',
-    zipCode: '1100',
-    emergencyContactName: 'Carlos Lopez',
-    emergencyContactPhone: '+63 956 789 0124',
-    registeredOn: '2025-11-01T11:20:00',
-    status: 'flagged',
-    verified: false,
-    accountType: 'resident',
-    submissionsCount: 8,
-  },
-  {
-    id: 'USR-2025-005',
-    firstName: 'Carlos',
-    lastName: 'Reyes',
-    email: 'carlos.reyes@email.com',
-    phone: '+63 956 789 0125',
-    dateOfBirth: '1982-07-18',
-    gender: 'Male',
-    address: 'Zone 4, Avenue A, House 15',
-    purok: 'Purok 4',
-    barangay: 'Barangay Central',
-    city: 'Quezon City',
-    zipCode: '1100',
-    emergencyContactName: 'Rosa Reyes',
-    emergencyContactPhone: '+63 967 890 1235',
-    registeredOn: '2025-10-28T08:30:00',
-    status: 'suspended',
-    verified: true,
-    accountType: 'resident',
-    submissionsCount: 15,
-  },
-];
 
-// Status Badge (Updated for Emergency System)
+// Status Badge
 function StatusBadge({ status }) {
   const styles = {
     active: {
@@ -160,16 +54,17 @@ function StatusBadge({ status }) {
     suspended: 'Suspended',
   };
 
-  const config = styles[status];
+  const config = styles[status] || styles.active;
   const Icon = config.icon;
 
   return (
     <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold border ${config.bg} ${config.text} ${config.border}`}>
       <Icon className="w-3 h-3 mr-1.5" />
-      {labels[status]}
+      {labels[status] || status}
     </span>
   );
 }
+
 
 // Verified Badge
 function VerifiedBadge({ verified }) {
@@ -189,11 +84,15 @@ function VerifiedBadge({ verified }) {
   );
 }
 
+
 // View Resident Modal
-function ViewResidentModal({ resident, onClose }) {
+function ViewResidentModal({ resident, onClose, onUpdate }) {
   if (!resident) return null;
 
+  const [loading, setLoading] = useState(false);
+
   const calculateAge = (dob) => {
+    if (!dob) return 'N/A';
     const birthDate = new Date(dob);
     const today = new Date();
     let age = today.getFullYear() - birthDate.getFullYear();
@@ -204,7 +103,67 @@ function ViewResidentModal({ resident, onClose }) {
     return age;
   };
 
-  const accountAge = Math.floor((new Date() - new Date(resident.registeredOn)) / (1000 * 60 * 60 * 24));
+  const accountAge = Math.floor((new Date() - new Date(resident.created_at)) / (1000 * 60 * 60 * 24));
+
+  // Update resident status
+  const updateStatus = async (newStatus) => {
+    const confirmMessages = {
+      flagged: 'Flag this account for review?',
+      suspended: 'Suspend this account? User will lose access to emergency features.',
+      active: 'Restore this account to active status?',
+    };
+
+    if (!confirm(confirmMessages[newStatus])) return;
+
+    setLoading(true);
+    try {
+      const { error } = await supabase
+        .from('users')
+        .update({ 
+          account_status: newStatus,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', resident.id);
+
+      if (error) throw error;
+
+      alert(`Account ${newStatus === 'active' ? 'activated' : newStatus} successfully!`);
+      onUpdate(); // Refresh data
+      onClose();
+    } catch (error) {
+      console.error('Error updating status:', error);
+      alert('Failed to update account status');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Verify user
+  const verifyUser = async () => {
+    if (!confirm('Verify this user? This will add a trust badge to their account.')) return;
+
+    setLoading(true);
+    try {
+      const { error } = await supabase
+        .from('users')
+        .update({ 
+          is_verified: true,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', resident.id);
+
+      if (error) throw error;
+
+      alert('User verified successfully!');
+      onUpdate();
+      onClose();
+    } catch (error) {
+      console.error('Error verifying user:', error);
+      alert('Failed to verify user');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
@@ -227,17 +186,13 @@ function ViewResidentModal({ resident, onClose }) {
 
         {/* Content */}
         <div className="p-6 space-y-6">
-          {/* Status & Verification & Trust Score */}
+          {/* Status & Verification */}
           <div className="flex items-center gap-3 flex-wrap">
-            <StatusBadge status={resident.status} />
-            <VerifiedBadge verified={resident.verified} />
+            <StatusBadge status={resident.account_status || 'active'} />
+            <VerifiedBadge verified={resident.is_verified} />
             <div className="flex items-center text-sm bg-gray-100 px-3 py-1.5 rounded-lg">
               <Calendar className="w-4 h-4 mr-2 text-gray-500" />
-              Registered: {new Date(resident.registeredOn).toLocaleDateString()}
-            </div>
-            <div className="flex items-center text-sm bg-purple-100 px-3 py-1.5 rounded-lg">
-              <Activity className="w-4 h-4 mr-2 text-purple-600" />
-              {resident.submissionsCount} Submissions
+              Registered: {new Date(resident.created_at).toLocaleDateString()}
             </div>
             <div className="flex items-center text-sm bg-blue-100 px-3 py-1.5 rounded-lg">
               <Clock className="w-4 h-4 mr-2 text-blue-600" />
@@ -245,68 +200,73 @@ function ViewResidentModal({ resident, onClose }) {
             </div>
           </div>
 
-          {/* Emergency System Notice */}
-          {!resident.verified && resident.status === 'active' && (
+          {/* Warnings */}
+          {!resident.is_verified && resident.account_status === 'active' && (
             <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 flex items-start space-x-3">
               <AlertTriangle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
               <div>
                 <p className="text-sm font-semibold text-yellow-900">Unverified Account - Full Access</p>
                 <p className="text-xs text-yellow-700 mt-1">
-                  This user has full emergency reporting access. Verify identity to add trust badge and unlock additional benefits.
+                  This user has full emergency reporting access. Verify identity to add trust badge.
                 </p>
               </div>
             </div>
           )}
 
-          {/* Flagged Warning */}
-          {resident.status === 'flagged' && (
+          {resident.account_status === 'flagged' && (
             <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 flex items-start space-x-3">
               <Flag className="w-5 h-5 text-orange-600 flex-shrink-0 mt-0.5" />
               <div>
                 <p className="text-sm font-semibold text-orange-900">Account Flagged for Review</p>
                 <p className="text-xs text-orange-700 mt-1">
-                  Suspicious activity detected. Review recent submissions and verify identity before taking action.
+                  Review recent activity before taking action.
                 </p>
               </div>
             </div>
           )}
 
-          {/* Personal Information (Read-Only) */}
+          {resident.account_status === 'suspended' && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start space-x-3">
+              <Ban className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-semibold text-red-900">Account Suspended</p>
+                <p className="text-xs text-red-700 mt-1">
+                  This user cannot access emergency features.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Personal Information */}
           <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 rounded-xl p-5 border border-blue-200">
             <h3 className="text-sm font-bold text-gray-700 mb-4 flex items-center">
               <User className="w-4 h-4 mr-2 text-blue-600" />
-              Personal Information (Read-Only)
+              Personal Information
             </h3>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <p className="text-xs text-blue-600 uppercase font-semibold mb-1">First Name</p>
-                <p className="text-sm font-semibold text-gray-900">{resident.firstName}</p>
-              </div>
-              <div>
-                <p className="text-xs text-blue-600 uppercase font-semibold mb-1">Last Name</p>
-                <p className="text-sm font-semibold text-gray-900">{resident.lastName}</p>
+                <p className="text-xs text-blue-600 uppercase font-semibold mb-1">Full Name</p>
+                <p className="text-sm font-semibold text-gray-900">
+                  {resident.full_name || `${resident.first_name || ''} ${resident.last_name || ''}`.trim() || 'N/A'}
+                </p>
               </div>
               <div>
                 <p className="text-xs text-blue-600 uppercase font-semibold mb-1">Date of Birth</p>
                 <p className="text-sm font-semibold text-gray-900">
-                  {new Date(resident.dateOfBirth).toLocaleDateString('en-US', {
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric',
-                  })}
+                  {resident.date_of_birth ? new Date(resident.date_of_birth).toLocaleDateString() : 'N/A'}
                 </p>
-                <p className="text-xs text-gray-500 mt-1">{calculateAge(resident.dateOfBirth)} years old</p>
+                {resident.date_of_birth && (
+                  <p className="text-xs text-gray-500 mt-1">{calculateAge(resident.date_of_birth)} years old</p>
+                )}
               </div>
               <div>
                 <p className="text-xs text-blue-600 uppercase font-semibold mb-1">Gender</p>
-                <p className="text-sm font-semibold text-gray-900">{resident.gender}</p>
+                <p className="text-sm font-semibold text-gray-900">{resident.gender || 'N/A'}</p>
               </div>
-            </div>
-            <div className="mt-4 p-3 bg-blue-100 rounded-lg">
-              <p className="text-xs text-blue-800">
-                <Shield className="w-3 h-3 inline mr-1" />
-                Personal details can only be changed by the resident via mobile app.
-              </p>
+              <div>
+                <p className="text-xs text-blue-600 uppercase font-semibold mb-1">Account Type</p>
+                <p className="text-sm font-semibold text-gray-900">{resident.account_type || 'resident'}</p>
+              </div>
             </div>
           </div>
 
@@ -321,14 +281,14 @@ function ViewResidentModal({ resident, onClose }) {
                 <p className="text-xs text-green-600 uppercase font-semibold mb-1">Email</p>
                 <a href={`mailto:${resident.email}`} className="text-sm text-green-600 hover:text-green-700 flex items-center font-medium">
                   <Mail className="w-3 h-3 mr-2" />
-                  {resident.email}
+                  {resident.email || 'N/A'}
                 </a>
               </div>
               <div>
                 <p className="text-xs text-green-600 uppercase font-semibold mb-1">Phone</p>
                 <a href={`tel:${resident.phone}`} className="text-sm text-green-600 hover:text-green-700 flex items-center font-medium">
                   <Phone className="w-3 h-3 mr-2" />
-                  {resident.phone}
+                  {resident.phone || 'N/A'}
                 </a>
               </div>
             </div>
@@ -343,46 +303,17 @@ function ViewResidentModal({ resident, onClose }) {
             <div className="space-y-3">
               <div>
                 <p className="text-xs text-purple-600 uppercase font-semibold mb-1">Full Address</p>
-                <p className="text-sm font-medium text-gray-900">{resident.address}</p>
+                <p className="text-sm font-medium text-gray-900">{resident.address || 'N/A'}</p>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-xs text-purple-600 uppercase font-semibold mb-1">Purok</p>
-                  <p className="text-sm font-semibold text-gray-900">{resident.purok}</p>
+                  <p className="text-sm font-semibold text-gray-900">{resident.purok || 'N/A'}</p>
                 </div>
                 <div>
                   <p className="text-xs text-purple-600 uppercase font-semibold mb-1">Barangay</p>
-                  <p className="text-sm font-semibold text-gray-900">{resident.barangay}</p>
+                  <p className="text-sm font-semibold text-gray-900">{resident.barangay || 'N/A'}</p>
                 </div>
-                <div>
-                  <p className="text-xs text-purple-600 uppercase font-semibold mb-1">City</p>
-                  <p className="text-sm font-semibold text-gray-900">{resident.city}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-purple-600 uppercase font-semibold mb-1">Zip Code</p>
-                  <p className="text-sm font-semibold text-gray-900">{resident.zipCode}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Emergency Contact */}
-          <div className="bg-gradient-to-br from-orange-50 to-orange-100/50 rounded-xl p-5 border border-orange-200">
-            <h3 className="text-sm font-bold text-gray-700 mb-4 flex items-center">
-              <AlertTriangle className="w-4 h-4 mr-2 text-orange-600" />
-              Emergency Contact
-            </h3>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-xs text-orange-600 uppercase font-semibold mb-1">Contact Name</p>
-                <p className="text-sm font-semibold text-gray-900">{resident.emergencyContactName}</p>
-              </div>
-              <div>
-                <p className="text-xs text-orange-600 uppercase font-semibold mb-1">Contact Phone</p>
-                <a href={`tel:${resident.emergencyContactPhone}`} className="text-sm text-orange-600 hover:text-orange-700 flex items-center font-medium">
-                  <Phone className="w-3 h-3 mr-2" />
-                  {resident.emergencyContactPhone}
-                </a>
               </div>
             </div>
           </div>
@@ -390,48 +321,60 @@ function ViewResidentModal({ resident, onClose }) {
 
         {/* Footer - Admin Actions */}
         <div className="sticky bottom-0 bg-gray-50 border-t border-gray-200 px-6 py-4 rounded-b-2xl">
-          <div className="flex gap-3">
-            <button onClick={onClose} className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 font-semibold transition-colors">
+          <div className="flex gap-3 flex-wrap">
+            <button 
+              onClick={onClose} 
+              className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 font-semibold transition-colors"
+              disabled={loading}
+            >
               Close
             </button>
             
             {/* Verify if Not Verified */}
-            {!resident.verified && resident.status === 'active' && (
-              <button className="flex-1 flex items-center justify-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold transition-colors shadow-sm">
-                <Shield className="w-4 h-4" />
+            {!resident.is_verified && resident.account_status !== 'suspended' && (
+              <button 
+                onClick={verifyUser}
+                disabled={loading}
+                className="flex-1 flex items-center justify-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold transition-colors shadow-sm disabled:opacity-50"
+              >
+                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Shield className="w-4 h-4" />}
                 <span>Verify Identity</span>
               </button>
             )}
             
             {/* Flag if Active */}
-            {resident.status === 'active' && (
-              <button className="px-4 py-2 flex items-center space-x-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 font-semibold transition-colors shadow-sm">
+            {resident.account_status === 'active' && (
+              <button 
+                onClick={() => updateStatus('flagged')}
+                disabled={loading}
+                className="px-4 py-2 flex items-center space-x-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 font-semibold transition-colors shadow-sm disabled:opacity-50"
+              >
                 <Flag className="w-4 h-4" />
                 <span>Flag Account</span>
               </button>
             )}
             
             {/* Suspend if Active or Flagged */}
-            {(resident.status === 'active' || resident.status === 'flagged') && (
-              <button className="px-4 py-2 flex items-center space-x-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-semibold transition-colors shadow-sm">
+            {(resident.account_status === 'active' || resident.account_status === 'flagged') && (
+              <button 
+                onClick={() => updateStatus('suspended')}
+                disabled={loading}
+                className="px-4 py-2 flex items-center space-x-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-semibold transition-colors shadow-sm disabled:opacity-50"
+              >
                 <Ban className="w-4 h-4" />
                 <span>Suspend</span>
               </button>
             )}
             
-            {/* Unsuspend if Suspended */}
-            {resident.status === 'suspended' && (
-              <button className="flex-1 flex items-center justify-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-semibold transition-colors shadow-sm">
+            {/* Restore if Suspended or Flagged */}
+            {(resident.account_status === 'suspended' || resident.account_status === 'flagged') && (
+              <button 
+                onClick={() => updateStatus('active')}
+                disabled={loading}
+                className="flex-1 flex items-center justify-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-semibold transition-colors shadow-sm disabled:opacity-50"
+              >
                 <CheckCircle className="w-4 h-4" />
-                <span>Unsuspend Account</span>
-              </button>
-            )}
-
-            {/* Unflag if Flagged */}
-            {resident.status === 'flagged' && (
-              <button className="flex-1 flex items-center justify-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-semibold transition-colors shadow-sm">
-                <CheckCircle className="w-4 h-4" />
-                <span>Clear Flag</span>
+                <span>Restore Account</span>
               </button>
             )}
           </div>
@@ -441,24 +384,149 @@ function ViewResidentModal({ resident, onClose }) {
   );
 }
 
+
 // Main Component
 export default function Residents() {
+  const [residents, setResidents] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [selectedResident, setSelectedResident] = useState(null);
   const [viewModalOpen, setViewModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [purokFilter, setPurokFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState('All');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const itemsPerPage = 10;
+
+  // Fetch residents from Supabase
+  const fetchResidents = async () => {
+    setLoading(true);
+    try {
+      let query = supabase
+        .from('users')
+        .select('*', { count: 'exact' })
+        .eq('account_type', 'resident')
+        .order('created_at', { ascending: false });
+
+      // Apply filters
+      if (searchTerm) {
+        query = query.or(`full_name.ilike.%${searchTerm}%,first_name.ilike.%${searchTerm}%,last_name.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%`);
+      }
+
+      if (purokFilter !== 'All') {
+        query = query.eq('purok', purokFilter);
+      }
+
+      if (statusFilter !== 'All') {
+        query = query.eq('account_status', statusFilter);
+      }
+
+      // Pagination
+      const from = (currentPage - 1) * itemsPerPage;
+      const to = from + itemsPerPage - 1;
+      query = query.range(from, to);
+
+      const { data, error, count } = await query;
+
+      if (error) throw error;
+
+      setResidents(data || []);
+      setTotalPages(Math.ceil((count || 0) / itemsPerPage));
+    } catch (error) {
+      console.error('Error fetching residents:', error);
+      alert('Failed to load residents');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fetch on mount and when filters change
+  useEffect(() => {
+    fetchResidents();
+  }, [searchTerm, purokFilter, statusFilter, currentPage]);
+
+  // Stats calculation
+  const [stats, setStats] = useState({
+    total: 0,
+    active: 0,
+    flagged: 0,
+    verified: 0,
+  });
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const { count: total } = await supabase
+          .from('users')
+          .select('*', { count: 'exact', head: true })
+          .eq('account_type', 'resident');
+
+        const { count: active } = await supabase
+          .from('users')
+          .select('*', { count: 'exact', head: true })
+          .eq('account_type', 'resident')
+          .eq('account_status', 'active');
+
+        const { count: flagged } = await supabase
+          .from('users')
+          .select('*', { count: 'exact', head: true })
+          .eq('account_type', 'resident')
+          .eq('account_status', 'flagged');
+
+        const { count: verified } = await supabase
+          .from('users')
+          .select('*', { count: 'exact', head: true })
+          .eq('account_type', 'resident')
+          .eq('is_verified', true);
+
+        setStats({
+          total: total || 0,
+          active: active || 0,
+          flagged: flagged || 0,
+          verified: verified || 0,
+        });
+      } catch (error) {
+        console.error('Error fetching stats:', error);
+      }
+    };
+
+    fetchStats();
+  }, [residents]);
+
+  // Export to CSV
+  const exportToCSV = () => {
+    const headers = ['ID', 'Name', 'Email', 'Phone', 'Address', 'Purok', 'Status', 'Verified', 'Registered'];
+    const csvData = residents.map(r => [
+      r.id,
+      r.full_name || `${r.first_name || ''} ${r.last_name || ''}`,
+      r.email,
+      r.phone || '',
+      r.address || '',
+      r.purok || '',
+      r.account_status || 'active',
+      r.is_verified ? 'Yes' : 'No',
+      new Date(r.created_at).toLocaleDateString(),
+    ]);
+
+    const csv = [headers, ...csvData].map(row => row.join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `residents_${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+  };
 
   const handleView = (resident) => {
     setSelectedResident(resident);
     setViewModalOpen(true);
   };
 
-  const stats = {
-    total: mockResidents.length,
-    active: mockResidents.filter(r => r.status === 'active').length,
-    flagged: mockResidents.filter(r => r.status === 'flagged').length,
-    verified: mockResidents.filter(r => r.verified).length,
+  const clearFilters = () => {
+    setSearchTerm('');
+    setPurokFilter('All');
+    setStatusFilter('All');
+    setCurrentPage(1);
   };
 
   return (
@@ -472,21 +540,14 @@ export default function Residents() {
           </h1>
           <p className="text-gray-600 mt-1 font-medium">Monitor registered residents and verify identities</p>
         </div>
-        <button className="flex items-center space-x-2 px-4 py-2.5 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 font-semibold transition-all hover:shadow-sm">
+        <button 
+          onClick={exportToCSV}
+          disabled={residents.length === 0}
+          className="flex items-center space-x-2 px-4 py-2.5 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 font-semibold transition-all hover:shadow-sm disabled:opacity-50"
+        >
           <Download className="w-4 h-4" />
           <span>Export List</span>
         </button>
-      </div>
-
-      {/* Emergency System Banner */}
-      <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-start space-x-3">
-        <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-        <div>
-          <p className="text-sm font-semibold text-green-900">Instant Access Emergency System</p>
-          <p className="text-xs text-green-700 mt-1">
-            All new registrations get immediate access to emergency reporting. Verification adds trust badges and benefits but doesn't block critical features.
-          </p>
-        </div>
       </div>
 
       {/* Stats */}
@@ -519,7 +580,7 @@ export default function Residents() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
               <input
                 type="text"
-                placeholder="Search by name, email, or ID..."
+                placeholder="Search by name, email..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -557,11 +618,7 @@ export default function Residents() {
 
           <div>
             <button
-              onClick={() => {
-                setSearchTerm('');
-                setPurokFilter('All');
-                setStatusFilter('All');
-              }}
+              onClick={clearFilters}
               className="w-full flex items-center justify-center space-x-2 px-4 py-2.5 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg font-semibold transition-colors"
             >
               <RefreshCw className="w-4 h-4" />
@@ -573,99 +630,133 @@ export default function Residents() {
 
       {/* Table */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>
-                <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">ID</th>
-                <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Name</th>
-                <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Contact</th>
-                <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Address</th>
-                <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Registered</th>
-                <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Status</th>
-                <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {mockResidents.map((resident) => (
-                <tr key={resident.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className="text-sm font-semibold text-gray-900">{resident.id}</span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center">
-                      <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-blue-700 rounded-full flex items-center justify-center text-white font-bold text-sm mr-3">
-                        {resident.firstName.charAt(0)}{resident.lastName.charAt(0)}
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-gray-900">{resident.firstName} {resident.lastName}</p>
-                        <p className="text-xs text-gray-500">{resident.gender}</p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div>
-                      <p className="text-sm text-gray-900 flex items-center">
-                        <Mail className="w-3 h-3 mr-1 text-gray-400" />
-                        {resident.email}
-                      </p>
-                      <p className="text-xs text-gray-500 flex items-center mt-1">
-                        <Phone className="w-3 h-3 mr-1 text-gray-400" />
-                        {resident.phone}
-                      </p>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-start text-sm text-gray-600 max-w-xs">
-                      <MapPin className="w-4 h-4 mr-1 text-gray-400 flex-shrink-0 mt-0.5" />
-                      <span className="truncate">{resident.address}</span>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-1">{resident.purok}</p>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                    {new Date(resident.registeredOn).toLocaleDateString()}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="space-y-2">
-                      <StatusBadge status={resident.status} />
-                      <VerifiedBadge verified={resident.verified} />
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <button 
-                      onClick={() => handleView(resident)} 
-                      className="flex items-center space-x-2 px-3 py-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors font-semibold text-sm"
-                      title="View Profile"
-                    >
-                      <Eye className="w-4 h-4" />
-                      <span>View</span>
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+            <span className="ml-3 text-gray-600">Loading residents...</span>
+          </div>
+        ) : residents.length === 0 ? (
+          <div className="text-center py-12">
+            <User className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+            <p className="text-gray-600">No residents found</p>
+          </div>
+        ) : (
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Name</th>
+                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Contact</th>
+                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Address</th>
+                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Registered</th>
+                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Status</th>
+                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {residents.map((resident) => {
+                    const fullName = resident.full_name || `${resident.first_name || ''} ${resident.last_name || ''}`.trim() || 'Unknown';
+                    const initials = fullName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
 
-        {/* Pagination */}
-        <div className="bg-gray-50 border-t border-gray-200 px-6 py-4 flex items-center justify-between">
-          <div className="text-sm text-gray-600">
-            Showing <span className="font-semibold text-gray-900">1-5</span> of <span className="font-semibold text-gray-900">5</span> results
-          </div>
-          <div className="flex items-center space-x-2">
-            <button className="px-3 py-2 text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 font-semibold transition-colors">
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <button className="px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold">1</button>
-            <button className="px-3 py-2 text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 font-semibold transition-colors">
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
+                    return (
+                      <tr key={resident.id} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center">
+                            <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-blue-700 rounded-full flex items-center justify-center text-white font-bold text-sm mr-3">
+                              {initials}
+                            </div>
+                            <div>
+                              <p className="text-sm font-semibold text-gray-900">{fullName}</p>
+                              <p className="text-xs text-gray-500">{resident.gender || 'N/A'}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div>
+                            <p className="text-sm text-gray-900 flex items-center">
+                              <Mail className="w-3 h-3 mr-1 text-gray-400" />
+                              {resident.email}
+                            </p>
+                            {resident.phone && (
+                              <p className="text-xs text-gray-500 flex items-center mt-1">
+                                <Phone className="w-3 h-3 mr-1 text-gray-400" />
+                                {resident.phone}
+                              </p>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-start text-sm text-gray-600 max-w-xs">
+                            <MapPin className="w-4 h-4 mr-1 text-gray-400 flex-shrink-0 mt-0.5" />
+                            <span className="truncate">{resident.address || 'N/A'}</span>
+                          </div>
+                          {resident.purok && (
+                            <p className="text-xs text-gray-500 mt-1">{resident.purok}</p>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                          {new Date(resident.created_at).toLocaleDateString()}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="space-y-2">
+                            <StatusBadge status={resident.account_status || 'active'} />
+                            <VerifiedBadge verified={resident.is_verified} />
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <button 
+                            onClick={() => handleView(resident)} 
+                            className="flex items-center space-x-2 px-3 py-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors font-semibold text-sm"
+                          >
+                            <Eye className="w-4 h-4" />
+                            <span>View</span>
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination */}
+            <div className="bg-gray-50 border-t border-gray-200 px-6 py-4 flex items-center justify-between">
+              <div className="text-sm text-gray-600">
+                Showing <span className="font-semibold text-gray-900">{(currentPage - 1) * itemsPerPage + 1}</span> to{' '}
+                <span className="font-semibold text-gray-900">{Math.min(currentPage * itemsPerPage, residents.length)}</span> of{' '}
+                <span className="font-semibold text-gray-900">{stats.total}</span> results
+              </div>
+              <div className="flex items-center space-x-2">
+                <button 
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="px-3 py-2 text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 font-semibold transition-colors disabled:opacity-50"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <span className="px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold">{currentPage}</span>
+                <button 
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="px-3 py-2 text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 font-semibold transition-colors disabled:opacity-50"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Modal */}
-      {viewModalOpen && <ViewResidentModal resident={selectedResident} onClose={() => setViewModalOpen(false)} />}
+      {viewModalOpen && (
+        <ViewResidentModal 
+          resident={selectedResident} 
+          onClose={() => setViewModalOpen(false)} 
+          onUpdate={fetchResidents}
+        />
+      )}
     </div>
   );
 }
