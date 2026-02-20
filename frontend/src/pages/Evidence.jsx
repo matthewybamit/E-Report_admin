@@ -1,9 +1,18 @@
 // src/pages/Evidence.jsx
 import { useState, useEffect } from 'react';
 import { supabase } from '../config/supabase';
-import { 
-  Camera, Download, Eye, X, Filter, Search, Calendar, 
-  User, MapPin, CheckCircle, Maximize2, RefreshCw
+import {
+  Camera,
+  Download,
+  Eye,
+  X,
+  Search,
+  Calendar,
+  User,
+  MapPin,
+  CheckCircle,
+  Maximize2,
+  RefreshCw
 } from 'lucide-react';
 
 export default function Evidence() {
@@ -14,17 +23,13 @@ export default function Evidence() {
   const [selectedReport, setSelectedReport] = useState(null);
   const [imageZoomed, setImageZoomed] = useState(false);
 
-  useEffect(() => {
-    fetchReportsWithEvidence();
-  }, []);
-
-  useEffect(() => {
-    filterReports();
-  }, [reports, searchQuery]);
+  useEffect(() => { fetchReportsWithEvidence(); }, []);
+  useEffect(() => { filterReports(); }, [reports, searchQuery]);
 
   const fetchReportsWithEvidence = async () => {
     try {
       setLoading(true);
+      // ✅ REMOVED: ai_verdict, ai_score, ai_notes from select
       const { data, error } = await supabase
         .from('reports')
         .select('*')
@@ -42,15 +47,12 @@ export default function Evidence() {
   };
 
   const filterReports = () => {
-    if (!searchQuery) {
-      setFilteredReports(reports);
-      return;
-    }
-
-    const filtered = reports.filter(r => 
-      r.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      r.report_number?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      r.assigned_to?.toLowerCase().includes(searchQuery.toLowerCase())
+    if (!searchQuery) { setFilteredReports(reports); return; }
+    const q = searchQuery.toLowerCase();
+    const filtered = reports.filter((r) =>
+      r.title?.toLowerCase().includes(q) ||
+      r.report_number?.toLowerCase().includes(q) ||
+      r.assigned_to?.toLowerCase().includes(q)
     );
     setFilteredReports(filtered);
   };
@@ -58,6 +60,7 @@ export default function Evidence() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6">
       <div className="max-w-7xl mx-auto space-y-6">
+
         {/* Header */}
         <div className="bg-white rounded-2xl shadow-lg p-6 border-2 border-gray-200">
           <div className="flex items-center justify-between">
@@ -72,12 +75,11 @@ export default function Evidence() {
                 View all completion evidence submitted by responders
               </p>
             </div>
-
             <div className="flex items-center gap-3">
               <span className="px-4 py-2 bg-green-100 text-green-800 rounded-xl font-bold text-sm">
                 {filteredReports.length} Items
               </span>
-              <button 
+              <button
                 onClick={fetchReportsWithEvidence}
                 className="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 font-semibold transition-all flex items-center gap-2"
               >
@@ -86,8 +88,6 @@ export default function Evidence() {
               </button>
             </div>
           </div>
-
-          {/* Search Bar */}
           <div className="mt-4">
             <div className="relative">
               <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
@@ -118,12 +118,12 @@ export default function Evidence() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredReports.map((report) => (
-              <div 
+              <div
                 key={report.id}
                 className="group bg-white rounded-2xl shadow-md hover:shadow-2xl transition-all duration-300 overflow-hidden border-2 border-gray-200 hover:border-green-400"
               >
                 {/* Evidence Photo */}
-                <div 
+                <div
                   className="relative h-64 overflow-hidden cursor-pointer"
                   onClick={() => setSelectedReport(report)}
                 >
@@ -149,7 +149,6 @@ export default function Evidence() {
                       </a>
                     </div>
                   </div>
-
                   {/* Status Badge */}
                   <div className="absolute top-4 right-4">
                     <span className="flex items-center gap-1 px-3 py-1.5 bg-green-600 text-white rounded-full text-xs font-bold shadow-lg">
@@ -161,41 +160,30 @@ export default function Evidence() {
 
                 {/* Card Content */}
                 <div className="p-5 space-y-3">
-                  {/* Report Title */}
                   <h3 className="text-lg font-bold text-gray-900 line-clamp-2 leading-tight">
                     {report.title}
                   </h3>
-
-                  {/* Report Number */}
-                  <p className="text-sm text-green-600 font-semibold">
-                    {report.report_number}
-                  </p>
-
-                  {/* Responder Info */}
+                  <p className="text-sm text-green-600 font-semibold">{report.report_number}</p>
                   <div className="flex items-center gap-2 text-sm text-gray-600">
                     <User className="w-4 h-4 text-blue-500" />
                     <span className="font-medium">{report.assigned_to || 'Unknown'}</span>
                   </div>
-
-                  {/* Location */}
                   <div className="flex items-start gap-2 text-sm text-gray-600">
                     <MapPin className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
                     <span className="line-clamp-1">{report.location || 'No location'}</span>
                   </div>
 
-                  {/* Completion Date */}
+                  {/* ✅ REMOVED: AI Suspicion Badge — no longer shown here */}
+
                   <div className="flex items-center gap-2 text-xs text-gray-500 pt-3 border-t border-gray-100">
                     <Calendar className="w-3.5 h-3.5" />
                     <span>
                       {new Date(report.work_completed_at).toLocaleDateString('en-US', {
-                        month: 'short',
-                        day: 'numeric',
-                        year: 'numeric'
+                        month: 'short', day: 'numeric', year: 'numeric'
                       })}
                     </span>
                   </div>
 
-                  {/* View Details Button */}
                   <button
                     onClick={() => setSelectedReport(report)}
                     className="w-full mt-3 py-2.5 bg-green-600 text-white rounded-xl hover:bg-green-700 font-semibold text-sm transition-all flex items-center justify-center gap-2"
@@ -214,7 +202,6 @@ export default function Evidence() {
       {selectedReport && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-300">
           <div className="bg-white rounded-3xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-            {/* Modal Header */}
             <div className="sticky top-0 bg-gradient-to-r from-green-600 to-emerald-700 px-8 py-6 z-10 rounded-t-3xl">
               <div className="flex items-start justify-between">
                 <div>
@@ -236,7 +223,6 @@ export default function Evidence() {
               </div>
             </div>
 
-            {/* Modal Content */}
             <div className="p-8 space-y-6">
               {/* Evidence Photo */}
               <div>
@@ -244,7 +230,7 @@ export default function Evidence() {
                   <Camera className="w-4 h-4 mr-2 text-green-600" />
                   Evidence Photo
                 </h3>
-                <div 
+                <div
                   onClick={() => setImageZoomed(true)}
                   className="relative group cursor-zoom-in overflow-hidden rounded-2xl border-2 border-green-200 hover:border-green-400 transition-all"
                 >
@@ -261,6 +247,8 @@ export default function Evidence() {
                   </div>
                 </div>
               </div>
+
+              {/* ✅ REMOVED: AI Fraud Check block — belongs in Reports.jsx only */}
 
               {/* Responder Notes */}
               {selectedReport.responder_notes && (
@@ -292,11 +280,8 @@ export default function Evidence() {
                   <p className="text-xs text-green-600 uppercase font-semibold mb-1">Completed</p>
                   <p className="text-sm font-bold text-gray-900">
                     {new Date(selectedReport.work_completed_at).toLocaleDateString('en-US', {
-                      month: 'short',
-                      day: 'numeric',
-                      year: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit'
+                      month: 'short', day: 'numeric', year: 'numeric',
+                      hour: '2-digit', minute: '2-digit'
                     })}
                   </p>
                 </div>

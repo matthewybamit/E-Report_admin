@@ -1,4 +1,4 @@
-// src/pages/Dashboard.jsx
+// src/pages/Dashboard.jsx - WITH EMERGENCIES + FILTER + MINI CARD AT BOTTOM
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../config/supabase';
@@ -40,7 +40,9 @@ import {
   Package,
   Wrench,
   MessageSquare,
-  UserCheck
+  UserCheck,
+  Ambulance,
+  Flame
 } from 'lucide-react';
 
 // --- MAP CONFIGURATION ---
@@ -357,6 +359,195 @@ function FullReportModal({ report, onClose, onUpdate }) {
   );
 }
 
+// --- FULL EMERGENCY VIEW MODAL ---
+function FullEmergencyModal({ emergency, onClose, onUpdate }) {
+  if (!emergency) return null;
+
+  const handleQuickResolve = async () => {
+    try {
+      await supabase.from('emergencies').update({ 
+        status: 'resolved',
+        completed_at: new Date().toISOString()
+      }).eq('id', emergency.id);
+      onUpdate();
+      alert('Emergency resolved successfully!');
+    } catch (error) {
+      console.error('Resolve error:', error);
+      alert('Failed to resolve emergency');
+    }
+  };
+
+  const emergencyIcons = {
+    Medical: Ambulance,
+    Fire: Flame,
+    Crime: Shield,
+    Accident: AlertTriangle,
+  };
+  const EmergencyIcon = emergencyIcons[emergency.type] || AlertTriangle;
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4 animate-in fade-in duration-200">
+      <div className="bg-white rounded-3xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden animate-in zoom-in-95 duration-200">
+        {/* Header */}
+        <div className="bg-gradient-to-r from-red-600 to-red-700 px-8 py-6">
+          <div className="flex items-start justify-between">
+            <div className="flex-1">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="bg-white/20 p-2 rounded-lg">
+                  <EmergencyIcon className="w-5 h-5 text-white" />
+                </div>
+                <h2 className="text-2xl font-bold text-white">{emergency.type} EMERGENCY</h2>
+              </div>
+              <p className="text-red-100 text-sm">ID: {emergency.id.slice(0, 8)}</p>
+              <div className="flex gap-2 mt-3">
+                <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                  emergency.status === 'resolved' ? 'bg-green-100 text-green-800' :
+                  emergency.status === 'dispatched' ? 'bg-blue-100 text-blue-800' :
+                  'bg-red-100 text-red-800'
+                }`}>
+                  {emergency.status}
+                </span>
+                <span className="px-3 py-1 rounded-full text-xs font-bold bg-red-100 text-red-800">
+                  {emergency.severity || 'HIGH'}
+                </span>
+              </div>
+            </div>
+            <button 
+              onClick={onClose}
+              className="text-white/80 hover:text-white hover:bg-white/20 p-2 rounded-xl transition-all"
+            >
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="p-8 space-y-6 max-h-[calc(90vh-200px)] overflow-y-auto">
+          {/* Quick Actions */}
+          {emergency.status === 'pending' && (
+            <div className="bg-gradient-to-r from-red-50 to-orange-50 rounded-xl p-4 border-2 border-red-200">
+              <p className="text-sm font-bold text-red-900 mb-3">Quick Actions</p>
+              <div className="flex gap-2">
+                <button 
+                  onClick={handleQuickResolve}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-semibold text-sm"
+                >
+                  <CheckCircle className="w-4 h-4" />
+                  Mark Resolved
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Emergency Details */}
+          <div className="bg-gray-50 rounded-xl p-6 border border-gray-200">
+            <h3 className="font-bold text-gray-800 mb-4 flex items-center">
+              <AlertTriangle className="w-4 h-4 mr-2 text-red-600" />
+              Emergency Details
+            </h3>
+            <div className="space-y-4">
+              <div>
+                <p className="text-xs text-gray-500 font-semibold mb-1">TYPE</p>
+                <p className="font-semibold text-gray-900">{emergency.type}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 font-semibold mb-1">DESCRIPTION</p>
+                <p className="text-gray-700 leading-relaxed">{emergency.description}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 font-semibold mb-1">REPORTED</p>
+                <p className="text-gray-700 flex items-center">
+                  <Clock className="w-3 h-3 mr-1" />
+                  {new Date(emergency.created_at).toLocaleString()}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Location */}
+          <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-6 border border-green-200">
+            <h3 className="font-bold text-gray-800 mb-4 flex items-center">
+              <MapPin className="w-4 h-4 mr-2 text-green-600" />
+              Location
+            </h3>
+            <div className="space-y-3">
+              <div>
+                <p className="text-xs text-green-600 font-semibold mb-1">ADDRESS</p>
+                <p className="font-medium text-gray-900">{emergency.location_text || 'GPS Coordinates'}</p>
+              </div>
+              {emergency.latitude && emergency.longitude && (
+                <>
+                  <div>
+                    <p className="text-xs text-green-600 font-semibold mb-1">COORDINATES</p>
+                    <p className="text-gray-700">{emergency.latitude.toFixed(5)}, {emergency.longitude.toFixed(5)}</p>
+                  </div>
+                  <a 
+                    href={`https://www.google.com/maps/search/?api=1&query=${emergency.latitude},${emergency.longitude}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-semibold text-sm"
+                  >
+                    <Navigation className="w-4 h-4" />
+                    Open in Google Maps
+                  </a>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Responder Notes */}
+          {emergency.responder_notes && (
+            <div className="bg-purple-50 rounded-xl p-6 border border-purple-200">
+              <h3 className="font-bold text-gray-800 mb-3 flex items-center">
+                <MessageSquare className="w-4 h-4 mr-2 text-purple-600" />
+                Responder Notes
+              </h3>
+              <p className="text-gray-700 whitespace-pre-wrap">{emergency.responder_notes}</p>
+            </div>
+          )}
+
+          {/* Evidence Photo */}
+          {emergency.evidence_photo_url && (
+            <div>
+              <h3 className="font-bold text-gray-800 mb-3 flex items-center">
+                <ImageIcon className="w-4 h-4 mr-2" />
+                Evidence Photo
+              </h3>
+              <div className="overflow-hidden rounded-xl border-2 border-gray-200">
+                <img 
+                  src={emergency.evidence_photo_url} 
+                  alt="Emergency evidence" 
+                  className="w-full h-64 object-cover"
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="bg-gray-50 border-t border-gray-200 px-8 py-4 flex gap-3">
+          <button 
+            onClick={onClose}
+            className="px-6 py-2 bg-gray-200 hover:bg-gray-300 rounded-xl font-semibold text-gray-700"
+          >
+            Close
+          </button>
+          <button 
+            onClick={() => {
+              onClose();
+              window.open(`/emergency`, '_blank');
+            }}
+            className="flex-1 flex items-center justify-center gap-2 px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl font-semibold"
+          >
+            <Eye className="w-4 h-4" />
+            View in Emergency Page
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // --- INTERACTIVE MAP COMPONENT ---
 function InteractiveMap({ markers, selectedMarker, onMarkerClick }) {
   const mapContainerRef = useRef(null);
@@ -399,15 +590,23 @@ function InteractiveMap({ markers, selectedMarker, onMarkerClick }) {
 
       if (lat && lng) {
         let icon = blueIcon;
-        if (marker.priority === 'urgent') icon = redIcon;
-        else if (marker.priority === 'high') icon = orangeIcon;
-        if (marker.status === 'resolved') icon = greenIcon;
+        
+        // Different icon logic for emergencies vs reports
+        if (marker.type) { // Emergency
+          if (marker.severity === 'critical' || marker.severity === 'urgent') icon = redIcon;
+          else if (marker.severity === 'high') icon = orangeIcon;
+          if (marker.status === 'resolved') icon = greenIcon;
+        } else { // Report
+          if (marker.priority === 'urgent') icon = redIcon;
+          else if (marker.priority === 'high') icon = orangeIcon;
+          if (marker.status === 'resolved') icon = greenIcon;
+        }
 
         const leafletMarker = L.marker([lat, lng], { icon })
           .bindPopup(`
             <div style="font-family: sans-serif;">
-              <strong style="font-size: 14px;">${marker.title}</strong><br/>
-              <span style="color: #666; font-size: 12px;">${marker.location || 'Quezon City'}</span>
+              <strong style="font-size: 14px;">${marker.title || marker.type + ' Emergency'}</strong><br/>
+              <span style="color: #666; font-size: 12px;">${marker.location || marker.location_text || 'Quezon City'}</span>
             </div>
           `);
         
@@ -441,48 +640,54 @@ function InteractiveMap({ markers, selectedMarker, onMarkerClick }) {
   );
 }
 
-// --- MINI DETAIL CARD ---
-function MarkerDetailCard({ marker, onViewFull }) {
+// --- MINI DETAIL CARD (COMPACT VERSION FOR BOTTOM OF MAP) ---
+function MarkerDetailCard({ marker, onViewFull, dataType }) {
   if (!marker) return null;
 
+  const isEmergency = dataType === 'emergency' || marker.type; // Check if emergency
+
   return (
-    <div className="bg-white rounded-2xl shadow-xl border border-gray-200 p-6 animate-in fade-in slide-in-from-right-4 duration-300">
-      <div className="flex items-start justify-between mb-4">
-        <div className="flex items-center space-x-3">
-          <div className={`p-3 rounded-xl ${marker.priority === 'urgent' ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-blue-600'}`}>
-             {marker.priority === 'urgent' ? <AlertCircle className="w-5 h-5" /> : <FileText className="w-5 h-5" />}
+    <div className="bg-white rounded-xl shadow-xl border-2 border-gray-300 p-4 animate-in fade-in slide-in-from-bottom-4 duration-300">
+      <div className="flex items-center justify-between gap-4">
+        {/* Left: Icon + Info */}
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <div className={`p-2.5 rounded-lg flex-shrink-0 ${
+            isEmergency ? 'bg-red-50 text-red-600' : 
+            marker.priority === 'urgent' ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-blue-600'
+          }`}>
+             {isEmergency ? <Ambulance className="w-5 h-5" /> : <FileText className="w-5 h-5" />}
           </div>
-          <div>
-            <h3 className="font-bold text-gray-900 text-lg line-clamp-1">{marker.title}</h3>
-            <p className="text-xs text-gray-500 mt-1 flex items-center">
-              <Clock className="w-3 h-3 mr-1" />
-              {new Date(marker.created_at).toLocaleDateString()} • {new Date(marker.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}
+          
+          <div className="flex-1 min-w-0">
+            <h3 className="font-bold text-gray-900 text-base line-clamp-1">
+              {isEmergency ? `${marker.type} Emergency` : marker.title}
+            </h3>
+            <p className="text-xs text-gray-600 line-clamp-1 mt-0.5">
+              {marker.description}
             </p>
+            <div className="flex items-center gap-2 mt-1.5">
+              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold uppercase ${
+                marker.status === 'resolved' ? 'bg-green-100 text-green-700' : 
+                marker.status === 'in-progress' || marker.status === 'dispatched' ? 'bg-blue-100 text-blue-700' :
+                'bg-yellow-100 text-yellow-700'
+              }`}>
+                {marker.status}
+              </span>
+              <span className="text-xs text-gray-500 flex items-center">
+                <Clock className="w-3 h-3 mr-1" />
+                {new Date(marker.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}
+              </span>
+            </div>
           </div>
         </div>
-      </div>
 
-      <div className="space-y-4">
-        <div className="p-3 bg-gray-50 rounded-xl border border-gray-100">
-            <p className="text-sm text-gray-700 leading-relaxed line-clamp-3">{marker.description}</p>
-        </div>
-
-        <div className="flex items-center gap-2 flex-wrap pt-2">
-           <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold uppercase border ${
-              marker.status === 'resolved' ? 'bg-green-100 text-green-800 border-green-200' : 
-              marker.status === 'in-progress' ? 'bg-blue-100 text-blue-800 border-blue-200' :
-              'bg-yellow-100 text-yellow-800 border-yellow-200'
-           }`}>
-              {marker.status}
-           </span>
-        </div>
-
+        {/* Right: Action Button */}
         <button 
-            onClick={() => onViewFull(marker)}
-            className="w-full mt-4 flex items-center justify-center space-x-2 px-4 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 font-bold transition-all shadow-md hover:shadow-lg active:scale-95"
+          onClick={() => onViewFull(marker)}
+          className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold text-sm transition-all shadow-md hover:shadow-lg active:scale-95 whitespace-nowrap flex-shrink-0"
         >
           <Eye className="w-4 h-4" />
-          <span>View Full Report</span>
+          <span>View Details</span>
         </button>
       </div>
     </div>
@@ -496,17 +701,27 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [selectedMarker, setSelectedMarker] = useState(null);
   const [viewingReport, setViewingReport] = useState(null);
+  const [viewingEmergency, setViewingEmergency] = useState(null);
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterPriority, setFilterPriority] = useState('all');
   
+  // NEW: Data type filter
+  const [dataType, setDataType] = useState('all'); // 'all', 'reports', 'emergencies'
+  
   const [stats, setStats] = useState({
     totalReports: 0,
+    totalEmergencies: 0,
     activeUsers: 0,
     urgentReports: 0,
+    urgentEmergencies: 0,
     resolvedReports: 0,
+    resolvedEmergencies: 0,
     pendingReports: 0,
+    pendingEmergencies: 0,
     inProgressReports: 0,
+    dispatchedEmergencies: 0,
     todayReports: 0,
+    todayEmergencies: 0,
     weekTrend: 0
   });
   const [recentActivity, setRecentActivity] = useState([]);
@@ -520,12 +735,22 @@ export default function Dashboard() {
       const today = new Date().toISOString().split('T')[0];
       const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
+      // Reports stats
       const { count: totalReports } = await supabase.from('reports').select('*', { count: 'exact', head: true });
       const { count: urgentReports } = await supabase.from('reports').select('*', { count: 'exact', head: true }).eq('priority', 'urgent').neq('status', 'resolved');
       const { count: resolvedReports } = await supabase.from('reports').select('*', { count: 'exact', head: true }).eq('status', 'resolved');
       const { count: pendingReports } = await supabase.from('reports').select('*', { count: 'exact', head: true }).eq('status', 'pending');
       const { count: inProgressReports } = await supabase.from('reports').select('*', { count: 'exact', head: true }).eq('status', 'in-progress');
       const { count: todayReports } = await supabase.from('reports').select('*', { count: 'exact', head: true }).gte('created_at', today);
+
+      // Emergencies stats
+      const { count: totalEmergencies } = await supabase.from('emergencies').select('*', { count: 'exact', head: true });
+      const { count: urgentEmergencies } = await supabase.from('emergencies').select('*', { count: 'exact', head: true }).neq('status', 'resolved');
+      const { count: resolvedEmergencies } = await supabase.from('emergencies').select('*', { count: 'exact', head: true }).eq('status', 'resolved');
+      const { count: pendingEmergencies } = await supabase.from('emergencies').select('*', { count: 'exact', head: true }).eq('status', 'pending');
+      const { count: dispatchedEmergencies } = await supabase.from('emergencies').select('*', { count: 'exact', head: true }).eq('status', 'dispatched');
+      const { count: todayEmergencies } = await supabase.from('emergencies').select('*', { count: 'exact', head: true }).gte('created_at', today);
+
       const { count: activeUsers } = await supabase.from('admin_users').select('*', { count: 'exact', head: true });
       const { count: lastWeekReports } = await supabase.from('reports').select('*', { count: 'exact', head: true }).gte('created_at', weekAgo);
 
@@ -533,34 +758,72 @@ export default function Dashboard() {
 
       setStats({
         totalReports: totalReports || 0,
+        totalEmergencies: totalEmergencies || 0,
         urgentReports: urgentReports || 0,
+        urgentEmergencies: urgentEmergencies || 0,
         resolvedReports: resolvedReports || 0,
+        resolvedEmergencies: resolvedEmergencies || 0,
         pendingReports: pendingReports || 0,
+        pendingEmergencies: pendingEmergencies || 0,
         inProgressReports: inProgressReports || 0,
+        dispatchedEmergencies: dispatchedEmergencies || 0,
         activeUsers: activeUsers || 0,
         todayReports: todayReports || 0,
+        todayEmergencies: todayEmergencies || 0,
         weekTrend
       });
 
-      const { data: activityData } = await supabase.from('reports').select('*').order('created_at', { ascending: false }).limit(8);
-      setRecentActivity(activityData || []);
+      // Fetch recent activity based on data type
+      let activityData = [];
+      if (dataType === 'reports' || dataType === 'all') {
+        const { data: reportsData } = await supabase.from('reports').select('*').order('created_at', { ascending: false }).limit(4);
+        activityData = [...activityData, ...(reportsData || []).map(r => ({ ...r, _type: 'report' }))];
+      }
+      if (dataType === 'emergencies' || dataType === 'all') {
+        const { data: emergenciesData } = await supabase.from('emergencies').select('*').order('created_at', { ascending: false }).limit(4);
+        activityData = [...activityData, ...(emergenciesData || []).map(e => ({ ...e, _type: 'emergency', title: e.type + ' Emergency' }))];
+      }
+      activityData.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+      setRecentActivity(activityData.slice(0, 8));
 
-      let mapQuery = supabase.from('reports').select('*').limit(100);
-      if (filterStatus !== 'all') mapQuery = mapQuery.eq('status', filterStatus);
-      if (filterPriority !== 'all') mapQuery = mapQuery.eq('priority', filterPriority);
-      
-      const { data: mapItems } = await mapQuery;
-      setMapData(mapItems || []);
+      // Map data based on filters
+      let mapItems = [];
+      if (dataType === 'reports' || dataType === 'all') {
+        let reportQuery = supabase.from('reports').select('*').limit(50);
+        if (filterStatus !== 'all') reportQuery = reportQuery.eq('status', filterStatus);
+        if (filterPriority !== 'all') reportQuery = reportQuery.eq('priority', filterPriority);
+        const { data: reports } = await reportQuery;
+        mapItems = [...mapItems, ...(reports || [])];
+      }
+      if (dataType === 'emergencies' || dataType === 'all') {
+        let emergencyQuery = supabase.from('emergencies').select('*').limit(50);
+        if (filterStatus !== 'all') emergencyQuery = emergencyQuery.eq('status', filterStatus);
+        const { data: emergencies } = await emergencyQuery;
+        mapItems = [...mapItems, ...(emergencies || [])];
+      }
+      setMapData(mapItems);
 
-      // Fetch urgent notifications
-      const { data: urgentNotifs } = await supabase
+      // Fetch urgent notifications (both reports and emergencies)
+      const urgentNotifs = [];
+      const { data: urgentReportsNotifs } = await supabase
         .from('reports')
         .select('*')
         .eq('priority', 'urgent')
         .eq('status', 'pending')
         .order('created_at', { ascending: false })
-        .limit(5);
-      setNotifications(urgentNotifs || []);
+        .limit(3);
+      urgentNotifs.push(...(urgentReportsNotifs || []).map(r => ({ ...r, _type: 'report' })));
+      
+      const { data: urgentEmergenciesNotifs } = await supabase
+        .from('emergencies')
+        .select('*')
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false })
+        .limit(3);
+      urgentNotifs.push(...(urgentEmergenciesNotifs || []).map(e => ({ ...e, _type: 'emergency', title: e.type + ' Emergency' })));
+      
+      urgentNotifs.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+      setNotifications(urgentNotifs.slice(0, 5));
 
     } catch (error) {
       console.error("Error loading dashboard:", error);
@@ -575,10 +838,11 @@ export default function Dashboard() {
     const subscription = supabase
       .channel('dashboard-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'reports' }, () => fetchData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'emergencies' }, () => fetchData())
       .subscribe();
     
     return () => subscription.unsubscribe();
-  }, [filterStatus, filterPriority]);
+  }, [filterStatus, filterPriority, dataType]);
 
   // Check for reportId in URL on mount
   useEffect(() => {
@@ -592,12 +856,21 @@ export default function Dashboard() {
     }
   }, [searchParams]);
 
-  const handleViewReport = async (reportOrId) => {
-    if (typeof reportOrId === 'string') {
-      const { data } = await supabase.from('reports').select('*').eq('id', reportOrId).single();
-      if (data) setViewingReport(data);
+  const handleViewItem = async (item) => {
+    if (item._type === 'emergency' || item.type) {
+      if (typeof item === 'string') {
+        const { data } = await supabase.from('emergencies').select('*').eq('id', item).single();
+        if (data) setViewingEmergency(data);
+      } else {
+        setViewingEmergency(item);
+      }
     } else {
-      setViewingReport(reportOrId);
+      if (typeof item === 'string') {
+        const { data } = await supabase.from('reports').select('*').eq('id', item).single();
+        if (data) setViewingReport(data);
+      } else {
+        setViewingReport(item);
+      }
     }
   };
 
@@ -632,6 +905,45 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {/* DATA TYPE FILTER TABS */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-2">
+        <div className="flex gap-2">
+          <button
+            onClick={() => setDataType('all')}
+            className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-bold transition-all ${
+              dataType === 'all' 
+                ? 'bg-blue-600 text-white shadow-md' 
+                : 'bg-gray-50 text-gray-700 hover:bg-gray-100'
+            }`}
+          >
+            <Activity className="w-4 h-4" />
+            All Data
+          </button>
+          <button
+            onClick={() => setDataType('reports')}
+            className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-bold transition-all ${
+              dataType === 'reports' 
+                ? 'bg-indigo-600 text-white shadow-md' 
+                : 'bg-gray-50 text-gray-700 hover:bg-gray-100'
+            }`}
+          >
+            <FileText className="w-4 h-4" />
+            Reports Only
+          </button>
+          <button
+            onClick={() => setDataType('emergencies')}
+            className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-bold transition-all ${
+              dataType === 'emergencies' 
+                ? 'bg-red-600 text-white shadow-md' 
+                : 'bg-gray-50 text-gray-700 hover:bg-gray-100'
+            }`}
+          >
+            <Ambulance className="w-4 h-4" />
+            Emergencies Only
+          </button>
+        </div>
+      </div>
+
       {/* Enhanced Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-4">
         <div className="bg-gradient-to-br from-blue-500 to-blue-600 p-6 rounded-2xl shadow-lg text-white">
@@ -639,20 +951,31 @@ export default function Dashboard() {
             <div className="bg-white/20 p-3 rounded-xl">
               <FileText className="w-5 h-5" />
             </div>
-            <span className="text-xs font-bold uppercase opacity-90">Total</span>
+            <span className="text-xs font-bold uppercase opacity-90">Reports</span>
           </div>
           <p className="text-4xl font-bold mb-1">{stats.totalReports}</p>
-          <p className="text-xs opacity-80">All Reports</p>
+          <p className="text-xs opacity-80">Total Reports</p>
         </div>
 
         <div className="bg-gradient-to-br from-red-500 to-red-600 p-6 rounded-2xl shadow-lg text-white animate-pulse">
+          <div className="flex justify-between items-start mb-4">
+            <div className="bg-white/20 p-3 rounded-xl">
+              <Ambulance className="w-5 h-5" />
+            </div>
+            <span className="text-xs font-bold uppercase opacity-90">Emergencies</span>
+          </div>
+          <p className="text-4xl font-bold mb-1">{stats.totalEmergencies}</p>
+          <p className="text-xs opacity-80">Total Emergencies</p>
+        </div>
+
+        <div className="bg-gradient-to-br from-orange-500 to-red-500 p-6 rounded-2xl shadow-lg text-white">
           <div className="flex justify-between items-start mb-4">
             <div className="bg-white/20 p-3 rounded-xl">
               <Zap className="w-5 h-5" />
             </div>
             <span className="text-xs font-bold uppercase opacity-90">Urgent</span>
           </div>
-          <p className="text-4xl font-bold mb-1">{stats.urgentReports}</p>
+          <p className="text-4xl font-bold mb-1">{stats.urgentReports + stats.urgentEmergencies}</p>
           <p className="text-xs opacity-80">Needs Attention</p>
         </div>
 
@@ -663,19 +986,8 @@ export default function Dashboard() {
             </div>
             <span className="text-xs font-bold uppercase opacity-90">Pending</span>
           </div>
-          <p className="text-4xl font-bold mb-1">{stats.pendingReports}</p>
+          <p className="text-4xl font-bold mb-1">{stats.pendingReports + stats.pendingEmergencies}</p>
           <p className="text-xs opacity-80">Awaiting Action</p>
-        </div>
-
-        <div className="bg-gradient-to-br from-blue-400 to-cyan-500 p-6 rounded-2xl shadow-lg text-white">
-          <div className="flex justify-between items-start mb-4">
-            <div className="bg-white/20 p-3 rounded-xl">
-              <Activity className="w-5 h-5" />
-            </div>
-            <span className="text-xs font-bold uppercase opacity-90">Active</span>
-          </div>
-          <p className="text-4xl font-bold mb-1">{stats.inProgressReports}</p>
-          <p className="text-xs opacity-80">In Progress</p>
         </div>
 
         <div className="bg-gradient-to-br from-green-500 to-emerald-600 p-6 rounded-2xl shadow-lg text-white">
@@ -685,7 +997,7 @@ export default function Dashboard() {
             </div>
             <span className="text-xs font-bold uppercase opacity-90">Resolved</span>
           </div>
-          <p className="text-4xl font-bold mb-1">{stats.resolvedReports}</p>
+          <p className="text-4xl font-bold mb-1">{stats.resolvedReports + stats.resolvedEmergencies}</p>
           <p className="text-xs opacity-80">Completed</p>
         </div>
 
@@ -696,7 +1008,7 @@ export default function Dashboard() {
             </div>
             <span className="text-xs font-bold uppercase opacity-90">Today</span>
           </div>
-          <p className="text-4xl font-bold mb-1">{stats.todayReports}</p>
+          <p className="text-4xl font-bold mb-1">{stats.todayReports + stats.todayEmergencies}</p>
           <div className="flex items-center text-xs opacity-80">
             {stats.weekTrend >= 0 ? <TrendingUp className="w-3 h-3 mr-1" /> : <TrendingDown className="w-3 h-3 mr-1" />}
             <span>{Math.abs(stats.weekTrend)}% vs last week</span>
@@ -714,10 +1026,10 @@ export default function Dashboard() {
               </div>
               <div>
                 <h3 className="font-bold text-xl">⚠️ Urgent Alerts</h3>
-                <p className="text-sm opacity-90 mt-1">{notifications.length} reports require immediate attention</p>
+                <p className="text-sm opacity-90 mt-1">{notifications.length} items require immediate attention</p>
               </div>
             </div>
-            <button onClick={() => navigate('/reports?filter=urgent')} className="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg font-semibold text-sm flex items-center gap-2">
+            <button onClick={() => navigate(dataType === 'emergencies' ? '/emergency' : '/reports')} className="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg font-semibold text-sm flex items-center gap-2">
               View All <ChevronRight className="w-4 h-4" />
             </button>
           </div>
@@ -725,11 +1037,14 @@ export default function Dashboard() {
             {notifications.slice(0, 4).map(notif => (
               <div 
                 key={notif.id}
-                onClick={() => handleViewReport(notif)}
+                onClick={() => handleViewItem(notif)}
                 className="bg-white/10 hover:bg-white/20 rounded-xl p-4 cursor-pointer transition-all backdrop-blur-sm border border-white/20"
               >
-                <p className="font-bold line-clamp-1 mb-1">{notif.title}</p>
-                <p className="text-sm opacity-90 line-clamp-1">{notif.location}</p>
+                <p className="font-bold line-clamp-1 mb-1">
+                  {notif._type === 'emergency' ? '🚨 ' : '📋 '}
+                  {notif.title || notif.type + ' Emergency'}
+                </p>
+                <p className="text-sm opacity-90 line-clamp-1">{notif.location || notif.location_text}</p>
                 <p className="text-xs opacity-75 mt-2">{new Date(notif.created_at).toLocaleTimeString()}</p>
               </div>
             ))}
@@ -756,6 +1071,7 @@ export default function Dashboard() {
                 <option value="all">All Status</option>
                 <option value="pending">Pending</option>
                 <option value="in-progress">In Progress</option>
+                <option value="dispatched">Dispatched</option>
                 <option value="resolved">Resolved</option>
               </select>
               <select 
@@ -767,14 +1083,15 @@ export default function Dashboard() {
                 <option value="low">Low</option>
                 <option value="medium">Medium</option>
                 <option value="high">High</option>
-                <option value="urgent">Urgent</option>
+                <option value="urgent">Urgent/Critical</option>
               </select>
               <div className="ml-auto text-sm font-semibold text-gray-600">
-                Showing {mapData.length} reports
+                Showing {mapData.length} items
               </div>
             </div>
           </div>
 
+          {/* Map Container */}
           <div className="bg-white rounded-2xl shadow-md border border-gray-200 p-1 h-[600px] w-full z-0">
             <InteractiveMap 
               markers={mapData} 
@@ -783,22 +1100,18 @@ export default function Dashboard() {
             />
           </div>
           
+          {/* MOVED: Selected Marker Detail Card - Now Below Map */}
           {selectedMarker && (
-            <div className="lg:hidden fixed bottom-6 right-6 w-96 z-[1100]">
-              <MarkerDetailCard marker={selectedMarker} onViewFull={handleViewReport} />
-            </div>
+            <MarkerDetailCard 
+              marker={selectedMarker} 
+              onViewFull={handleViewItem} 
+              dataType={dataType} 
+            />
           )}
         </div>
 
         {/* Right Sidebar */}
         <div className="lg:col-span-4 space-y-6">
-          {/* Selected Report Card - Desktop */}
-          {selectedMarker && (
-            <div className="hidden lg:block">
-              <MarkerDetailCard marker={selectedMarker} onViewFull={handleViewReport} />
-            </div>
-          )}
-
           {/* Status Overview */}
           <div className="bg-white rounded-2xl shadow-md border border-gray-200 p-6">
             <h3 className="font-bold mb-6 text-gray-900 flex items-center justify-between">
@@ -863,12 +1176,12 @@ export default function Dashboard() {
                 <ChevronRight className="w-4 h-4" />
               </button>
               <button 
-                onClick={() => navigate('/reports?filter=urgent')}
+                onClick={() => navigate('/emergency')}
                 className="w-full flex items-center justify-between p-3 bg-white hover:bg-gray-50 rounded-xl font-semibold text-sm text-gray-700 transition-all border border-gray-200 shadow-sm"
               >
                 <span className="flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 text-red-600" />
-                  View Urgent Only
+                  <Ambulance className="w-4 h-4 text-red-600" />
+                  View All Emergencies
                 </span>
                 <ChevronRight className="w-4 h-4" />
               </button>
@@ -913,23 +1226,25 @@ export default function Dashboard() {
                 recentActivity.map(activity => (
                   <div 
                     key={activity.id} 
-                    onClick={() => handleViewReport(activity)}
+                    onClick={() => handleViewItem(activity)}
                     className="p-4 hover:bg-blue-50 border-b border-gray-50 cursor-pointer transition-all flex gap-3 group"
                   >
                     <div className={`w-2 h-2 mt-2 rounded-full flex-shrink-0 ${
+                      activity._type === 'emergency' ? 'bg-red-500 animate-pulse' :
                       activity.priority === 'urgent' ? 'bg-red-500 animate-pulse' : 
                       activity.priority === 'high' ? 'bg-orange-500' : 
                       'bg-blue-500'
                     }`}></div>
                     <div className="flex-1">
                       <p className="text-sm font-bold text-gray-900 line-clamp-1 group-hover:text-blue-600">
-                        {activity.title}
+                        {activity._type === 'emergency' ? '🚨 ' : ''}
+                        {activity.title || activity.type + ' Emergency'}
                       </p>
                       <p className="text-xs text-gray-500 line-clamp-1 mt-0.5">{activity.description}</p>
                       <div className="flex items-center gap-2 mt-2">
                         <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
                           activity.status === 'resolved' ? 'bg-green-100 text-green-700' :
-                          activity.status === 'in-progress' ? 'bg-blue-100 text-blue-700' :
+                          activity.status === 'in-progress' || activity.status === 'dispatched' ? 'bg-blue-100 text-blue-700' :
                           'bg-yellow-100 text-yellow-700'
                         }`}>
                           {activity.status}
@@ -948,7 +1263,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Full Report Modal */}
+      {/* Modals */}
       {viewingReport && (
         <FullReportModal 
           report={viewingReport} 
@@ -956,6 +1271,17 @@ export default function Dashboard() {
           onUpdate={() => {
             fetchData();
             setViewingReport(null);
+          }}
+        />
+      )}
+
+      {viewingEmergency && (
+        <FullEmergencyModal 
+          emergency={viewingEmergency} 
+          onClose={() => setViewingEmergency(null)}
+          onUpdate={() => {
+            fetchData();
+            setViewingEmergency(null);
           }}
         />
       )}
