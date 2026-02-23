@@ -2,206 +2,146 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../config/supabase';
 import {
-  Camera,
-  Upload,
-  Eye,
-  X,
-  CheckCircle,
-  AlertCircle,
-  Loader,
-  Image as ImageIcon,
-  MapPin,
-  Clock,
-  User,
-  Download,
-  Trash2,
-  RefreshCw,
-  Search,
-  Filter,
-  Calendar,
-  Maximize2,
-  AlertTriangle,
-  Shield,
-  Heart,
-  Flame
+  Camera, Upload, Eye, X, CheckCircle, AlertCircle,
+  Image as ImageIcon, MapPin, Clock, Download, Trash2,
+  RefreshCw, Search, Maximize2, AlertTriangle, Shield,
+  Heart, Flame, FileImage,
 } from 'lucide-react';
 
-// Emergency Type Icons
-function EmergencyIcon({ type }) {
-  const icons = {
-    Medical: { icon: Heart, color: 'text-red-600', bg: 'bg-red-100' },
-    Fire: { icon: Flame, color: 'text-orange-600', bg: 'bg-orange-100' },
-    Crime: { icon: Shield, color: 'text-purple-600', bg: 'bg-purple-100' },
-    Accident: { icon: AlertTriangle, color: 'text-yellow-600', bg: 'bg-yellow-100' },
-  };
-  const { icon: Icon, color, bg } = icons[type] || icons.Medical;
+// ─── Emergency type config ────────────────────────────────────────────────────
+const EMERGENCY_TYPES = {
+  Medical:  { icon: Heart,          color: 'text-red-600',    bg: 'bg-red-50',    border: 'border-red-300',    badge: 'bg-red-50 text-red-700 border-red-300'    },
+  Fire:     { icon: Flame,          color: 'text-orange-600', bg: 'bg-orange-50', border: 'border-orange-300', badge: 'bg-orange-50 text-orange-700 border-orange-300' },
+  Crime:    { icon: Shield,         color: 'text-purple-600', bg: 'bg-purple-50', border: 'border-purple-300', badge: 'bg-purple-50 text-purple-700 border-purple-300' },
+  Accident: { icon: AlertTriangle,  color: 'text-amber-600',  bg: 'bg-amber-50',  border: 'border-amber-300',  badge: 'bg-amber-50 text-amber-700 border-amber-300'  },
+};
+
+function EmergencyTypeBadge({ type }) {
+  const cfg = EMERGENCY_TYPES[type] || EMERGENCY_TYPES.Medical;
+  const Icon = cfg.icon;
   return (
-    <div className={`p-3 rounded-xl ${bg}`}>
-      <Icon className={`w-6 h-6 ${color}`} />
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded border text-xs font-bold uppercase tracking-wider ${cfg.badge}`}>
+      <Icon className="w-3 h-3" />{type || '—'}
+    </span>
+  );
+}
+
+function EmergencyIconBox({ type }) {
+  const cfg = EMERGENCY_TYPES[type] || EMERGENCY_TYPES.Medical;
+  const Icon = cfg.icon;
+  return (
+    <div className={`w-9 h-9 rounded flex items-center justify-center flex-shrink-0 ${cfg.bg} border ${cfg.border}`}>
+      <Icon className={`w-4 h-4 ${cfg.color}`} />
     </div>
   );
 }
 
-// Upload Modal Component
+// ─── Upload Modal ─────────────────────────────────────────────────────────────
 function UploadEvidenceModal({ emergency, onClose, onSuccess }) {
-  const [uploading, setUploading] = useState(false);
+  const [uploading, setUploading]     = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
-  const [previewUrl, setPreviewUrl] = useState(null);
-  const [notes, setNotes] = useState('');
+  const [previewUrl, setPreviewUrl]   = useState(null);
+  const [notes, setNotes]             = useState('');
+  const [error, setError]             = useState('');
 
   const handleFileSelect = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-
-    // Validate file type
-    if (!file.type.startsWith('image/')) {
-      alert('❌ Please select an image file');
-      return;
-    }
-
-    // Validate file size (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      alert('❌ File size must be less than 5MB');
-      return;
-    }
-
+    if (!file.type.startsWith('image/')) { setError('Please select an image file.'); return; }
+    if (file.size > 5 * 1024 * 1024)    { setError('File size must be less than 5MB.'); return; }
+    setError('');
     setSelectedFile(file);
     setPreviewUrl(URL.createObjectURL(file));
   };
 
   const handleUpload = async () => {
-    if (!selectedFile) {
-      alert('⚠️ Please select a photo first');
-      return;
-    }
-
+    if (!selectedFile) { setError('Please select a photo first.'); return; }
     setUploading(true);
-
+    setError('');
     try {
-      // 1. Upload image to Supabase Storage
       const fileExt = selectedFile.name.split('.').pop();
-      const fileName = `${emergency.id}-${Date.now()}.${fileExt}`;
-      const filePath = `emergency-evidence/${fileName}`;
+      const filePath = `emergency-evidence/${emergency.id}-${Date.now()}.${fileExt}`;
 
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('evidence')
-        .upload(filePath, selectedFile);
-
+      const { error: uploadError } = await supabase.storage
+        .from('evidence').upload(filePath, selectedFile);
       if (uploadError) throw uploadError;
 
-      // 2. Get public URL
-      const { data: { publicUrl } } = supabase.storage
-        .from('evidence')
-        .getPublicUrl(filePath);
+      const { data: { publicUrl } } = supabase.storage.from('evidence').getPublicUrl(filePath);
 
-      // 3. Update emergency with evidence photo URL
-      const { error: updateError } = await supabase
-        .from('emergencies')
-        .update({
-          evidence_photo_url: publicUrl,
-          responder_notes: notes || null,
-          completed_at: new Date().toISOString()
-        })
-        .eq('id', emergency.id);
-
+      const { error: updateError } = await supabase.from('emergencies').update({
+        evidence_photo_url: publicUrl,
+        responder_notes: notes || null,
+        completed_at: new Date().toISOString(),
+      }).eq('id', emergency.id);
       if (updateError) throw updateError;
 
-      alert('✅ Evidence uploaded successfully!');
       onSuccess();
       onClose();
-    } catch (error) {
-      console.error('Upload error:', error);
-      alert('❌ Failed to upload evidence: ' + error.message);
+    } catch (err) {
+      setError(err.message || 'Failed to upload evidence.');
     } finally {
       setUploading(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
-      <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
+      <div className="bg-white rounded-lg shadow-2xl w-full max-w-lg border border-slate-200 overflow-hidden">
+
         {/* Header */}
-        <div className="bg-gradient-to-r from-green-600 to-emerald-700 px-8 py-6 rounded-t-3xl">
-          <div className="flex items-start justify-between">
-            <div>
-              <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-                <Camera className="w-6 h-6" />
-                Upload Evidence Photo
-              </h2>
-              <p className="text-green-100 text-sm mt-1">Emergency ID: {emergency.id.slice(0, 8)}</p>
-            </div>
-            <button
-              onClick={onClose}
-              className="text-white/80 hover:text-white hover:bg-white/20 p-2 rounded-xl transition-all"
-            >
-              <X className="w-6 h-6" />
-            </button>
+        <div className="bg-slate-800 px-6 py-4 flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-bold text-white uppercase tracking-widest">Upload Evidence</h2>
+            <p className="text-xs text-slate-400 mt-0.5">Emergency #{emergency.id.slice(0, 8)}</p>
           </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-white p-1.5 rounded transition-colors">
+            <X className="w-4 h-4" />
+          </button>
         </div>
 
-        {/* Content */}
-        <div className="p-8 space-y-6">
-          {/* Emergency Info */}
-          <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-5 border-2 border-blue-200">
-            <div className="flex items-center gap-4 mb-3">
-              <EmergencyIcon type={emergency.type} />
-              <div>
-                <p className="font-bold text-gray-900 text-lg">{emergency.type} Emergency</p>
-                <p className="text-sm text-gray-600">{emergency.location_text}</p>
-              </div>
+        <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+          {error && (
+            <div className="p-3 bg-red-50 border border-red-300 rounded flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-red-700 font-medium">{error}</p>
             </div>
-            <p className="text-sm text-gray-700 bg-white/50 p-3 rounded-lg">
-              {emergency.description}
-            </p>
+          )}
+
+          {/* Emergency Info */}
+          <div className="bg-slate-50 border border-slate-200 rounded p-3 flex items-center gap-3">
+            <EmergencyIconBox type={emergency.type} />
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-slate-900">{emergency.type} Emergency</p>
+              <p className="text-xs text-slate-500 truncate">{emergency.location_text}</p>
+            </div>
           </div>
 
-          {/* File Upload Area */}
+          {/* File Upload */}
           <div>
-            <label className="block text-sm font-bold text-gray-700 mb-3">
-              📷 Evidence Photo *
+            <label className="block text-xs font-bold text-slate-700 uppercase tracking-widest mb-1.5">
+              Evidence Photo *
             </label>
-            
             {!previewUrl ? (
-              <label className="flex flex-col items-center justify-center w-full h-64 border-4 border-dashed border-gray-300 rounded-2xl cursor-pointer hover:border-green-500 hover:bg-green-50 transition-all group">
-                <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                  <Upload className="w-16 h-16 text-gray-400 group-hover:text-green-600 mb-4 transition-colors" />
-                  <p className="mb-2 text-sm font-semibold text-gray-700">
-                    <span className="text-green-600">Click to upload</span> or drag and drop
-                  </p>
-                  <p className="text-xs text-gray-500">PNG, JPG or JPEG (MAX. 5MB)</p>
-                </div>
-                <input
-                  type="file"
-                  className="hidden"
-                  accept="image/*"
-                  onChange={handleFileSelect}
-                />
+              <label className="flex flex-col items-center justify-center w-full h-48 border-2 border-dashed border-slate-300 rounded cursor-pointer hover:border-slate-500 hover:bg-slate-50 transition-all">
+                <Upload className="w-8 h-8 text-slate-400 mb-2" />
+                <p className="text-xs font-semibold text-slate-600">
+                  <span className="text-slate-800">Click to upload</span> or drag and drop
+                </p>
+                <p className="text-xs text-slate-400 mt-1">PNG, JPG or JPEG — max 5MB</p>
+                <input type="file" className="hidden" accept="image/*" onChange={handleFileSelect} />
               </label>
             ) : (
-              <div className="relative group">
-                <img
-                  src={previewUrl}
-                  alt="Preview"
-                  className="w-full h-64 object-cover rounded-2xl border-4 border-green-300"
-                />
+              <div className="relative">
+                <img src={previewUrl} alt="Preview" className="w-full h-48 object-cover rounded border border-slate-200" />
                 <button
-                  onClick={() => {
-                    setSelectedFile(null);
-                    setPreviewUrl(null);
-                  }}
-                  className="absolute top-3 right-3 p-2 bg-red-600 text-white rounded-full hover:bg-red-700 shadow-lg transition-all"
+                  onClick={() => { setSelectedFile(null); setPreviewUrl(null); }}
+                  className="absolute top-2 right-2 p-1.5 bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
                 >
-                  <Trash2 className="w-5 h-5" />
+                  <Trash2 className="w-3.5 h-3.5" />
                 </button>
-                <label className="absolute bottom-3 left-3 flex items-center gap-2 px-4 py-2 bg-white/90 backdrop-blur-sm rounded-lg cursor-pointer hover:bg-white transition-all shadow-lg">
-                  <Camera className="w-4 h-4" />
-                  <span className="text-sm font-semibold">Change Photo</span>
-                  <input
-                    type="file"
-                    className="hidden"
-                    accept="image/*"
-                    onChange={handleFileSelect}
-                  />
+                <label className="absolute bottom-2 left-2 flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 rounded text-xs font-semibold cursor-pointer hover:bg-slate-50 transition-colors shadow-sm">
+                  <Camera className="w-3.5 h-3.5" />Change Photo
+                  <input type="file" className="hidden" accept="image/*" onChange={handleFileSelect} />
                 </label>
               </div>
             )}
@@ -209,58 +149,44 @@ function UploadEvidenceModal({ emergency, onClose, onSuccess }) {
 
           {/* Notes */}
           <div>
-            <label className="block text-sm font-bold text-gray-700 mb-3">
-              📝 Responder Notes (Optional)
+            <label className="block text-xs font-bold text-slate-700 uppercase tracking-widest mb-1.5">
+              Responder Notes <span className="text-slate-400 normal-case font-normal">(optional)</span>
             </label>
             <textarea
               value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Add any completion notes or observations..."
-              rows={4}
-              className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-all resize-none"
+              onChange={e => setNotes(e.target.value)}
+              rows={3}
+              placeholder="Add completion notes or observations..."
+              className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded bg-white text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-400 transition resize-none"
             />
           </div>
 
-          {/* Info Box */}
-          <div className="bg-gradient-to-r from-yellow-50 to-amber-50 rounded-xl p-4 border-2 border-yellow-200">
-            <div className="flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
-              <div className="text-sm">
-                <p className="font-bold text-yellow-900 mb-1">Important</p>
-                <ul className="text-yellow-800 space-y-1 list-disc list-inside">
-                  <li>Photo must clearly show the resolved situation</li>
-                  <li>Include visible landmarks or identifiers</li>
-                  <li>Ensure good lighting and clarity</li>
-                </ul>
-              </div>
+          {/* Info */}
+          <div className="p-3 bg-amber-50 border border-amber-200 rounded flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+            <div className="text-xs text-amber-800">
+              <p className="font-bold mb-1">Photo Guidelines</p>
+              <ul className="space-y-0.5 list-disc list-inside">
+                <li>Clearly show the resolved situation</li>
+                <li>Include visible landmarks or identifiers</li>
+                <li>Ensure good lighting and clarity</li>
+              </ul>
             </div>
           </div>
         </div>
 
         {/* Footer */}
-        <div className="bg-gray-50 border-t-2 border-gray-200 px-8 py-5 flex gap-3 rounded-b-3xl">
-          <button
-            onClick={onClose}
-            className="px-6 py-3 bg-white border-2 border-gray-300 rounded-xl hover:bg-gray-50 font-bold text-gray-700 transition-all"
-          >
+        <div className="bg-slate-50 border-t border-slate-200 px-6 py-4 flex gap-2">
+          <button onClick={onClose} disabled={uploading}
+            className="flex-1 px-4 py-2.5 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded hover:bg-slate-50 transition-colors disabled:opacity-50">
             Cancel
           </button>
-          <button
-            onClick={handleUpload}
-            disabled={!selectedFile || uploading}
-            className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-green-600 text-white rounded-xl hover:bg-green-700 font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
-          >
-            {uploading ? (
-              <>
-                <Loader className="w-5 h-5 animate-spin" />
-                Uploading...
-              </>
-            ) : (
-              <>
-                <Upload className="w-5 h-5" />
-                Upload Evidence
-              </>
-            )}
+          <button onClick={handleUpload} disabled={!selectedFile || uploading}
+            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold bg-slate-800 hover:bg-slate-900 text-white rounded transition-colors disabled:opacity-50">
+            {uploading
+              ? <><div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />Uploading...</>
+              : <><Upload className="w-3.5 h-3.5" />Upload Evidence</>
+            }
           </button>
         </div>
       </div>
@@ -268,36 +194,25 @@ function UploadEvidenceModal({ emergency, onClose, onSuccess }) {
   );
 }
 
-// View Evidence Modal
+// ─── View Evidence Modal ──────────────────────────────────────────────────────
 function ViewEvidenceModal({ emergency, onClose, onDelete }) {
-  const [isZoomed, setIsZoomed] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+  const [isZoomed, setIsZoomed]   = useState(false);
+  const [deleting, setDeleting]   = useState(false);
+  const [error, setError]         = useState('');
 
   const handleDelete = async () => {
-    if (!confirm('⚠️ Are you sure you want to delete this evidence photo?')) return;
-
+    if (!window.confirm('Are you sure you want to delete this evidence photo?')) return;
     setDeleting(true);
+    setError('');
     try {
-      // Extract file path from URL
       const urlParts = emergency.evidence_photo_url.split('/');
       const fileName = urlParts[urlParts.length - 1];
-      const filePath = `emergency-evidence/${fileName}`;
-
-      // Delete from storage
-      await supabase.storage.from('evidence').remove([filePath]);
-
-      // Update database
-      await supabase
-        .from('emergencies')
-        .update({ evidence_photo_url: null })
-        .eq('id', emergency.id);
-
-      alert('✅ Evidence deleted');
+      await supabase.storage.from('evidence').remove([`emergency-evidence/${fileName}`]);
+      await supabase.from('emergencies').update({ evidence_photo_url: null }).eq('id', emergency.id);
       onDelete();
       onClose();
-    } catch (error) {
-      console.error('Delete error:', error);
-      alert('❌ Failed to delete evidence');
+    } catch (err) {
+      setError('Failed to delete evidence.');
     } finally {
       setDeleting(false);
     }
@@ -305,412 +220,307 @@ function ViewEvidenceModal({ emergency, onClose, onDelete }) {
 
   return (
     <>
-      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-3xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
+        <div className="bg-white rounded-lg shadow-2xl w-full max-w-2xl border border-slate-200 overflow-hidden">
+
           {/* Header */}
-          <div className="bg-gradient-to-r from-blue-600 to-indigo-700 px-8 py-6 rounded-t-3xl">
-            <div className="flex items-start justify-between">
-              <div>
-                <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-                  <ImageIcon className="w-6 h-6" />
-                  Evidence Photo
-                </h2>
-                <p className="text-blue-100 text-sm mt-1">Emergency ID: {emergency.id.slice(0, 8)}</p>
-              </div>
-              <button
-                onClick={onClose}
-                className="text-white/80 hover:text-white hover:bg-white/20 p-2 rounded-xl transition-all"
-              >
-                <X className="w-6 h-6" />
-              </button>
+          <div className="bg-slate-800 px-6 py-4 flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-bold text-white uppercase tracking-widest">Evidence Photo</h2>
+              <p className="text-xs text-slate-400 mt-0.5">Emergency #{emergency.id.slice(0, 8)}</p>
             </div>
+            <button onClick={onClose} className="text-slate-400 hover:text-white p-1.5 rounded transition-colors">
+              <X className="w-4 h-4" />
+            </button>
           </div>
 
-          {/* Content */}
-          <div className="p-8 space-y-6">
+          <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+            {error && (
+              <div className="p-3 bg-red-50 border border-red-300 rounded flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
+                <p className="text-xs text-red-700 font-medium">{error}</p>
+              </div>
+            )}
+
             {/* Emergency Info */}
-            <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl p-5 border-2 border-gray-200">
-              <div className="flex items-center gap-4 mb-3">
-                <EmergencyIcon type={emergency.type} />
-                <div>
-                  <p className="font-bold text-gray-900 text-lg">{emergency.type} Emergency</p>
-                  <div className="flex items-center gap-4 text-sm text-gray-600 mt-1">
-                    <span className="flex items-center gap-1">
-                      <MapPin className="w-3 h-3" />
-                      {emergency.location_text}
-                    </span>
+            <div className="bg-slate-50 border border-slate-200 rounded p-3 flex items-center gap-3">
+              <EmergencyIconBox type={emergency.type} />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-slate-900">{emergency.type} Emergency</p>
+                <div className="flex items-center gap-3 mt-0.5 text-xs text-slate-500">
+                  <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{emergency.location_text}</span>
+                  {emergency.completed_at && (
                     <span className="flex items-center gap-1">
                       <Clock className="w-3 h-3" />
-                      {new Date(emergency.completed_at).toLocaleString()}
+                      {new Date(emergency.completed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                     </span>
-                  </div>
+                  )}
                 </div>
               </div>
             </div>
 
             {/* Photo */}
             <div>
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-bold text-gray-700">Evidence Photo</h3>
-                <button
-                  onClick={() => setIsZoomed(true)}
-                  className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 font-semibold"
-                >
-                  <Maximize2 className="w-4 h-4" />
-                  View Full Size
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-bold text-slate-700 uppercase tracking-widest">Evidence Photo</label>
+                <button onClick={() => setIsZoomed(true)}
+                  className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700 font-semibold transition-colors">
+                  <Maximize2 className="w-3.5 h-3.5" />Full Size
                 </button>
               </div>
               <img
                 src={emergency.evidence_photo_url}
                 alt="Evidence"
-                className="w-full h-96 object-cover rounded-2xl border-2 border-gray-200 cursor-zoom-in hover:border-blue-400 transition-all"
+                className="w-full h-72 object-cover rounded border border-slate-200 cursor-zoom-in hover:opacity-90 transition-opacity"
                 onClick={() => setIsZoomed(true)}
               />
             </div>
 
             {/* Responder Notes */}
             {emergency.responder_notes && (
-              <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-5 border-2 border-purple-200">
-                <h3 className="text-sm font-bold text-purple-900 mb-2 uppercase">Responder Notes</h3>
-                <p className="text-gray-700 whitespace-pre-wrap">{emergency.responder_notes}</p>
+              <div className="bg-slate-50 border border-slate-200 rounded p-3">
+                <p className="text-xs font-bold text-slate-700 uppercase tracking-widest mb-1.5">Responder Notes</p>
+                <p className="text-sm text-slate-700 whitespace-pre-wrap">{emergency.responder_notes}</p>
               </div>
             )}
           </div>
 
           {/* Footer */}
-          <div className="bg-gray-50 border-t-2 border-gray-200 px-8 py-5 flex gap-3 rounded-b-3xl">
-            <button
-              onClick={onClose}
-              className="px-6 py-3 bg-white border-2 border-gray-300 rounded-xl hover:bg-gray-50 font-bold text-gray-700 transition-all"
-            >
+          <div className="bg-slate-50 border-t border-slate-200 px-6 py-4 flex gap-2">
+            <button onClick={onClose}
+              className="px-4 py-2.5 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded hover:bg-slate-50 transition-colors">
               Close
             </button>
-            <a
-              href={emergency.evidence_photo_url}
-              download
-              className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 font-bold transition-all"
-            >
-              <Download className="w-4 h-4" />
-              Download
+            <a href={emergency.evidence_photo_url} download
+              className="flex items-center gap-1.5 px-4 py-2.5 text-xs font-bold bg-slate-800 hover:bg-slate-900 text-white rounded transition-colors">
+              <Download className="w-3.5 h-3.5" />Download
             </a>
-            <button
-              onClick={handleDelete}
-              disabled={deleting}
-              className="flex items-center gap-2 px-6 py-3 bg-red-600 text-white rounded-xl hover:bg-red-700 font-bold transition-all disabled:opacity-50"
-            >
-              {deleting ? (
-                <>
-                  <Loader className="w-4 h-4 animate-spin" />
-                  Deleting...
-                </>
-              ) : (
-                <>
-                  <Trash2 className="w-4 h-4" />
-                  Delete
-                </>
-              )}
+            <button onClick={handleDelete} disabled={deleting}
+              className="flex items-center gap-1.5 px-4 py-2.5 text-xs font-bold bg-white border border-red-300 text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-50 ml-auto">
+              {deleting
+                ? <><div className="w-3.5 h-3.5 border-2 border-red-300 border-t-red-600 rounded-full animate-spin" />Deleting...</>
+                : <><Trash2 className="w-3.5 h-3.5" />Delete</>
+              }
             </button>
           </div>
         </div>
       </div>
 
-      {/* Zoomed Image */}
+      {/* Zoom overlay */}
       {isZoomed && (
-        <div
-          className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center p-4"
-          onClick={() => setIsZoomed(false)}
-        >
-          <button
-            className="absolute top-6 right-6 text-white/80 hover:text-white bg-white/10 hover:bg-white/20 p-3 rounded-full"
-            onClick={() => setIsZoomed(false)}
-          >
-            <X className="w-8 h-8" />
+        <div className="fixed inset-0 z-[3000] bg-black/95 flex items-center justify-center p-4" onClick={() => setIsZoomed(false)}>
+          <button className="absolute top-5 right-5 text-white/70 hover:text-white bg-white/10 hover:bg-white/20 p-2 rounded transition-colors" onClick={() => setIsZoomed(false)}>
+            <X className="w-6 h-6" />
           </button>
-          <img
-            src={emergency.evidence_photo_url}
-            alt="Evidence Full View"
-            className="max-w-full max-h-[90vh] object-contain rounded-lg"
-            onClick={(e) => e.stopPropagation()}
-          />
+          <img src={emergency.evidence_photo_url} alt="Full View" className="max-w-full max-h-[90vh] object-contain rounded" onClick={e => e.stopPropagation()} />
         </div>
       )}
     </>
   );
 }
 
-// Main Component
+// ─── Main Page ────────────────────────────────────────────────────────────────
 export default function EmergencyEvidence() {
-  const [emergencies, setEmergencies] = useState([]);
-  const [filteredEmergencies, setFilteredEmergencies] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filterType, setFilterType] = useState('all');
-  const [uploadModalOpen, setUploadModalOpen] = useState(false);
-  const [viewModalOpen, setViewModalOpen] = useState(false);
+  const [emergencies, setEmergencies]             = useState([]);
+  const [filtered, setFiltered]                   = useState([]);
+  const [loading, setLoading]                     = useState(true);
+  const [searchQuery, setSearchQuery]             = useState('');
+  const [filterType, setFilterType]               = useState('all');
+  const [uploadModal, setUploadModal]             = useState(false);
+  const [viewModal, setViewModal]                 = useState(false);
   const [selectedEmergency, setSelectedEmergency] = useState(null);
 
   useEffect(() => {
     fetchEmergencies();
-
     const channel = supabase
-      .channel('emergency-evidence-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'emergencies' }, () => {
-        fetchEmergencies();
-      })
+      .channel('evidence-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'emergencies' }, fetchEmergencies)
       .subscribe();
-
     return () => supabase.removeChannel(channel);
   }, []);
 
   useEffect(() => {
-    filterData();
+    let data = emergencies;
+    if (searchQuery) data = data.filter(e =>
+      e.type?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      e.location_text?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      e.id?.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+    if (filterType !== 'all') data = data.filter(e => e.type === filterType);
+    setFiltered(data);
   }, [emergencies, searchQuery, filterType]);
 
   const fetchEmergencies = async () => {
     setLoading(true);
     try {
       const { data, error } = await supabase
-        .from('emergencies')
-        .select('*')
-        .eq('status', 'resolved')
+        .from('emergencies').select('*').eq('status', 'resolved')
         .order('completed_at', { ascending: false });
-
       if (error) throw error;
       setEmergencies(data || []);
-    } catch (error) {
-      console.error('Error fetching emergencies:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const filterData = () => {
-    let filtered = emergencies;
-
-    if (searchQuery) {
-      filtered = filtered.filter(
-        (e) =>
-          e.type?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          e.location_text?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          e.id?.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-    }
-
-    if (filterType !== 'all') {
-      filtered = filtered.filter((e) => e.type === filterType);
-    }
-
-    setFilteredEmergencies(filtered);
-  };
-
-  const handleUpload = (emergency) => {
-    setSelectedEmergency(emergency);
-    setUploadModalOpen(true);
-  };
-
-  const handleView = (emergency) => {
-    setSelectedEmergency(emergency);
-    setViewModalOpen(true);
+    } catch (err) { console.error(err); }
+    finally { setLoading(false); }
   };
 
   const stats = {
-    total: emergencies.length,
-    withEvidence: emergencies.filter((e) => e.evidence_photo_url).length,
-    withoutEvidence: emergencies.filter((e) => !e.evidence_photo_url).length,
+    total:       emergencies.length,
+    withEvidence:    emergencies.filter(e => e.evidence_photo_url).length,
+    withoutEvidence: emergencies.filter(e => !e.evidence_photo_url).length,
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-4xl font-bold text-gray-900 flex items-center gap-3">
-              <Camera className="w-10 h-10 text-green-600" />
-              Emergency Evidence
-            </h1>
-            <p className="text-gray-600 mt-2 font-medium">
-              Upload and manage emergency completion photos
-            </p>
+    <div className="p-6 space-y-6 min-h-screen bg-slate-50">
+
+      {/* Page Header */}
+      <div className="flex items-start justify-between flex-wrap gap-4">
+        <div>
+          <div className="flex items-center gap-2 text-xs text-slate-500 mb-1 uppercase tracking-widest font-semibold">
+            <Camera className="w-3.5 h-3.5" />Emergency Evidence
           </div>
-          <button
-            onClick={fetchEmergencies}
-            className="flex items-center gap-2 px-6 py-3 bg-white border-2 border-gray-300 rounded-xl hover:bg-gray-50 font-bold transition-all shadow-sm"
-          >
-            <RefreshCw className="w-4 h-4" />
-            Refresh
-          </button>
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Evidence Management</h1>
+          <p className="text-sm text-slate-500 mt-0.5">Upload and manage emergency completion photos</p>
         </div>
-
-        {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl p-6 text-white shadow-lg">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-blue-100 text-sm font-semibold uppercase">Total Resolved</p>
-                <p className="text-4xl font-bold mt-2">{stats.total}</p>
-              </div>
-              <CheckCircle className="w-12 h-12 text-blue-200" />
-            </div>
-          </div>
-
-          <div className="bg-gradient-to-br from-green-500 to-emerald-600 rounded-2xl p-6 text-white shadow-lg">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-green-100 text-sm font-semibold uppercase">With Evidence</p>
-                <p className="text-4xl font-bold mt-2">{stats.withEvidence}</p>
-              </div>
-              <Camera className="w-12 h-12 text-green-200" />
-            </div>
-          </div>
-
-          <div className="bg-gradient-to-br from-orange-500 to-red-500 rounded-2xl p-6 text-white shadow-lg">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-orange-100 text-sm font-semibold uppercase">Missing Evidence</p>
-                <p className="text-4xl font-bold mt-2">{stats.withoutEvidence}</p>
-              </div>
-              <AlertCircle className="w-12 h-12 text-orange-200" />
-            </div>
-          </div>
-        </div>
-
-        {/* Filters */}
-        <div className="bg-white rounded-2xl shadow-md border-2 border-gray-200 p-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="relative">
-              <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-              <input
-                type="text"
-                placeholder="Search emergencies..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-12 pr-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-all"
-              />
-            </div>
-
-            <select
-              value={filterType}
-              onChange={(e) => setFilterType(e.target.value)}
-              className="px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-all font-semibold"
-            >
-              <option value="all">All Types</option>
-              <option value="Medical">Medical</option>
-              <option value="Fire">Fire</option>
-              <option value="Crime">Crime</option>
-              <option value="Accident">Accident</option>
-            </select>
-          </div>
-        </div>
-
-        {/* Grid */}
-        {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <Loader className="w-12 h-12 text-green-600 animate-spin" />
-          </div>
-        ) : filteredEmergencies.length === 0 ? (
-          <div className="text-center py-20 bg-white rounded-2xl shadow-md">
-            <Camera className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-            <p className="text-gray-500 text-lg font-semibold">No resolved emergencies found</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredEmergencies.map((emergency) => (
-              <div
-                key={emergency.id}
-                className="group bg-white rounded-2xl shadow-md hover:shadow-xl transition-all duration-300 border-2 border-gray-200 hover:border-green-300 overflow-hidden"
-              >
-                {/* Image or Placeholder */}
-                {emergency.evidence_photo_url ? (
-                  <div className="relative h-48 overflow-hidden bg-gray-100">
-                    <img
-                      src={emergency.evidence_photo_url}
-                      alt="Evidence"
-                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
-                    />
-                    <div className="absolute top-3 right-3 bg-green-600 text-white px-3 py-1 rounded-lg text-xs font-bold shadow-lg flex items-center gap-1">
-                      <CheckCircle className="w-3 h-3" />
-                      Has Evidence
-                    </div>
-                  </div>
-                ) : (
-                  <div className="h-48 bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
-                    <div className="text-center">
-                      <Camera className="w-12 h-12 text-gray-400 mx-auto mb-2" />
-                      <p className="text-sm text-gray-500 font-semibold">No Evidence Yet</p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Content */}
-                <div className="p-6 space-y-4">
-                  <div className="flex items-center gap-3">
-                    <EmergencyIcon type={emergency.type} />
-                    <div>
-                      <p className="font-bold text-gray-900">{emergency.type} Emergency</p>
-                      <p className="text-xs text-gray-500">ID: {emergency.id.slice(0, 8)}</p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2 text-sm text-gray-600">
-                    <div className="flex items-start gap-2">
-                      <MapPin className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                      <span className="line-clamp-1">{emergency.location_text}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Clock className="w-4 h-4 flex-shrink-0" />
-                      <span className="text-xs">
-                        {new Date(emergency.completed_at || emergency.created_at).toLocaleDateString()}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Actions */}
-                  <div className="flex gap-2 pt-3 border-t border-gray-200">
-                    {emergency.evidence_photo_url ? (
-                      <button
-                        onClick={() => handleView(emergency)}
-                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 font-semibold transition-all"
-                      >
-                        <Eye className="w-4 h-4" />
-                        View
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => handleUpload(emergency)}
-                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-green-600 text-white rounded-xl hover:bg-green-700 font-semibold transition-all"
-                      >
-                        <Upload className="w-4 h-4" />
-                        Upload
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+        <button onClick={fetchEmergencies} disabled={loading}
+          className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-slate-700 bg-white border border-slate-300 rounded hover:bg-slate-50 transition-colors shadow-sm disabled:opacity-50">
+          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />Refresh
+        </button>
       </div>
 
-      {/* Modals */}
-      {uploadModalOpen && selectedEmergency && (
+      {/* Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        {[
+          { label: 'Total Resolved',   value: stats.total,           color: 'text-slate-700' },
+          { label: 'With Evidence',    value: stats.withEvidence,    color: 'text-green-600' },
+          { label: 'Missing Evidence', value: stats.withoutEvidence, color: 'text-red-600'   },
+        ].map(({ label, value, color }) => (
+          <div key={label} className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm">
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest">{label}</p>
+            <p className={`text-2xl font-bold mt-1 ${color}`}>{value}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Filters */}
+      <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm">
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Search by type, location or ID..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="w-full pl-9 pr-4 py-2.5 text-sm border border-slate-300 rounded bg-white text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-400 transition"
+            />
+          </div>
+          <select
+            value={filterType}
+            onChange={e => setFilterType(e.target.value)}
+            className="px-3 py-2.5 text-sm border border-slate-300 rounded bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-400 transition font-semibold"
+          >
+            <option value="all">All Types</option>
+            {Object.keys(EMERGENCY_TYPES).map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {/* Grid */}
+      {loading ? (
+        <div className="flex items-center justify-center py-20">
+          <div className="w-8 h-8 border-2 border-slate-200 border-t-slate-600 rounded-full animate-spin" />
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="bg-white border border-slate-200 rounded-lg shadow-sm text-center py-16">
+          <div className="w-12 h-12 bg-slate-100 border border-slate-200 rounded flex items-center justify-center mx-auto mb-3">
+            <FileImage className="w-6 h-6 text-slate-400" />
+          </div>
+          <p className="text-sm font-semibold text-slate-600">No resolved emergencies found</p>
+          <p className="text-xs text-slate-400 mt-1">Try adjusting your search or filters.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filtered.map(emergency => (
+            <div key={emergency.id} className="bg-white border border-slate-200 rounded-lg shadow-sm hover:shadow-md transition-shadow overflow-hidden group">
+
+              {/* Image / Placeholder */}
+              {emergency.evidence_photo_url ? (
+                <div className="relative h-44 overflow-hidden bg-slate-100">
+                  <img
+                    src={emergency.evidence_photo_url}
+                    alt="Evidence"
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                  />
+                  <div className="absolute top-2.5 right-2.5">
+                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded border text-xs font-bold bg-green-50 text-green-700 border-green-300">
+                      <CheckCircle className="w-3 h-3" />Evidence
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div className="h-44 bg-slate-50 border-b border-slate-200 flex flex-col items-center justify-center gap-2">
+                  <div className="w-10 h-10 bg-slate-100 border border-slate-200 rounded flex items-center justify-center">
+                    <Camera className="w-5 h-5 text-slate-400" />
+                  </div>
+                  <p className="text-xs font-semibold text-slate-500">No Evidence Yet</p>
+                </div>
+              )}
+
+              {/* Content */}
+              <div className="p-4 space-y-3">
+                <div className="flex items-center gap-2.5">
+                  <EmergencyIconBox type={emergency.type} />
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-slate-900">{emergency.type} Emergency</p>
+                    <p className="text-xs text-slate-500">#{emergency.id.slice(0, 8)}</p>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5 text-xs text-slate-500">
+                  <div className="flex items-center gap-1.5">
+                    <MapPin className="w-3.5 h-3.5 flex-shrink-0" />
+                    <span className="truncate">{emergency.location_text || '—'}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 flex-shrink-0" />
+                    <span>{new Date(emergency.completed_at || emergency.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="pt-2 border-t border-slate-100">
+                  {emergency.evidence_photo_url ? (
+                    <button
+                      onClick={() => { setSelectedEmergency(emergency); setViewModal(true); }}
+                      className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold bg-slate-800 hover:bg-slate-900 text-white rounded transition-colors"
+                    >
+                      <Eye className="w-3.5 h-3.5" />View Evidence
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => { setSelectedEmergency(emergency); setUploadModal(true); }}
+                      className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded transition-colors"
+                    >
+                      <Upload className="w-3.5 h-3.5" />Upload Evidence
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {uploadModal && selectedEmergency && (
         <UploadEvidenceModal
           emergency={selectedEmergency}
-          onClose={() => {
-            setUploadModalOpen(false);
-            setSelectedEmergency(null);
-          }}
+          onClose={() => { setUploadModal(false); setSelectedEmergency(null); }}
           onSuccess={fetchEmergencies}
         />
       )}
-
-      {viewModalOpen && selectedEmergency && (
+      {viewModal && selectedEmergency && (
         <ViewEvidenceModal
           emergency={selectedEmergency}
-          onClose={() => {
-            setViewModalOpen(false);
-            setSelectedEmergency(null);
-          }}
+          onClose={() => { setViewModal(false); setSelectedEmergency(null); }}
           onDelete={fetchEmergencies}
         />
       )}

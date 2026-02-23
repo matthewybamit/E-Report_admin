@@ -13,41 +13,17 @@ import EReportLogo from '../assets/E-report_Logo.png';
 
 // ─── Custom Scrollbar Styles ──────────────────────────────────────────────────
 const scrollbarStyles = `
-  .sidebar-scroll::-webkit-scrollbar {
-    width: 4px;
-  }
-  .sidebar-scroll::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  .sidebar-scroll::-webkit-scrollbar-thumb {
-    background-color: #334155;
-    border-radius: 9999px;
-  }
-  .sidebar-scroll::-webkit-scrollbar-thumb:hover {
-    background-color: #475569;
-  }
-  .sidebar-scroll {
-    scrollbar-width: thin;
-    scrollbar-color: #334155 transparent;
-  }
+  .sidebar-scroll::-webkit-scrollbar { width: 4px; }
+  .sidebar-scroll::-webkit-scrollbar-track { background: transparent; }
+  .sidebar-scroll::-webkit-scrollbar-thumb { background-color: #334155; border-radius: 9999px; }
+  .sidebar-scroll::-webkit-scrollbar-thumb:hover { background-color: #475569; }
+  .sidebar-scroll { scrollbar-width: thin; scrollbar-color: #334155 transparent; }
 
-  .panel-scroll::-webkit-scrollbar {
-    width: 4px;
-  }
-  .panel-scroll::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  .panel-scroll::-webkit-scrollbar-thumb {
-    background-color: #cbd5e1;
-    border-radius: 9999px;
-  }
-  .panel-scroll::-webkit-scrollbar-thumb:hover {
-    background-color: #94a3b8;
-  }
-  .panel-scroll {
-    scrollbar-width: thin;
-    scrollbar-color: #cbd5e1 transparent;
-  }
+  .panel-scroll::-webkit-scrollbar { width: 4px; }
+  .panel-scroll::-webkit-scrollbar-track { background: transparent; }
+  .panel-scroll::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 9999px; }
+  .panel-scroll::-webkit-scrollbar-thumb:hover { background-color: #94a3b8; }
+  .panel-scroll { scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent; }
 `;
 
 // ─── Alert Panel ──────────────────────────────────────────────────────────────
@@ -57,22 +33,17 @@ function AlertPanel({ alerts, onClose, onMarkAsRead, onMarkAllAsRead, onDelete }
     read:   alerts.filter(a =>  a.is_read),
   };
 
-  const getSeverityStyle = (severity) => {
-    const styles = {
-      urgent: 'bg-red-50 border-red-300',
-      high:   'bg-orange-50 border-orange-300',
-      medium: 'bg-amber-50 border-amber-200',
-      low:    'bg-slate-50 border-slate-200',
-    };
-    return styles[severity] || 'bg-slate-50 border-slate-200';
-  };
+  const getSeverityStyle = (severity) => ({
+    urgent: 'bg-red-50 border-red-300',
+    high:   'bg-orange-50 border-orange-300',
+    medium: 'bg-amber-50 border-amber-200',
+    low:    'bg-slate-50 border-slate-200',
+  }[severity] || 'bg-slate-50 border-slate-200');
 
-  const getSeverityIcon = (severity) => {
-    if (severity === 'urgent' || severity === 'high') {
-      return <AlertCircle className="w-4 h-4 text-red-600" />;
-    }
-    return <Bell className="w-4 h-4 text-slate-500" />;
-  };
+  const getSeverityIcon = (severity) =>
+    severity === 'urgent' || severity === 'high'
+      ? <AlertCircle className="w-4 h-4 text-red-600" />
+      : <Bell className="w-4 h-4 text-slate-500" />;
 
   const timeAgo = (date) => {
     const seconds = Math.floor((new Date() - new Date(date)) / 1000);
@@ -88,8 +59,6 @@ function AlertPanel({ alerts, onClose, onMarkAsRead, onMarkAllAsRead, onDelete }
     <>
       <div className="fixed inset-0 z-40" onClick={onClose} />
       <div className="absolute right-0 mt-2 w-96 max-h-[600px] bg-white rounded-lg shadow-2xl border border-slate-200 z-50 flex flex-col overflow-hidden">
-
-        {/* Header */}
         <div className="px-5 py-3.5 border-b border-slate-700 bg-slate-800 flex items-center justify-between flex-shrink-0">
           <div>
             <h3 className="text-sm font-bold text-white uppercase tracking-widest">Admin Alerts</h3>
@@ -98,16 +67,12 @@ function AlertPanel({ alerts, onClose, onMarkAsRead, onMarkAllAsRead, onDelete }
             </p>
           </div>
           {groupedAlerts.unread.length > 0 && (
-            <button
-              onClick={onMarkAllAsRead}
-              className="text-xs font-semibold text-slate-300 hover:text-white px-3 py-1.5 bg-slate-700 hover:bg-slate-600 border border-slate-600 rounded transition-all"
-            >
+            <button onClick={onMarkAllAsRead} className="text-xs font-semibold text-slate-300 hover:text-white px-3 py-1.5 bg-slate-700 hover:bg-slate-600 border border-slate-600 rounded transition-all">
               Mark all read
             </button>
           )}
         </div>
 
-        {/* Body */}
         <div className="flex-1 overflow-y-auto panel-scroll">
           {alerts.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-14">
@@ -119,27 +84,21 @@ function AlertPanel({ alerts, onClose, onMarkAsRead, onMarkAllAsRead, onDelete }
             </div>
           ) : (
             <>
-              {/* Unread */}
               {groupedAlerts.unread.length > 0 && (
                 <div className="p-3 space-y-2">
                   <p className="text-xs font-bold text-slate-500 uppercase tracking-widest px-1 pt-1">
                     Unread ({groupedAlerts.unread.length})
                   </p>
                   {groupedAlerts.unread.map(alert => (
-                    <div
-                      key={alert.id}
-                      onClick={() => onMarkAsRead(alert)}
-                      className={`group relative p-3.5 border rounded cursor-pointer transition-all hover:shadow-sm ${getSeverityStyle(alert.severity)}`}
-                    >
+                    <div key={alert.id} onClick={() => onMarkAsRead(alert)}
+                      className={`group relative p-3.5 border rounded cursor-pointer transition-all hover:shadow-sm ${getSeverityStyle(alert.severity)}`}>
                       <div className="flex items-start gap-3">
                         <div className="flex-shrink-0 mt-0.5">{getSeverityIcon(alert.severity)}</div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-start justify-between gap-2">
                             <p className="text-xs font-bold text-slate-900 line-clamp-2">{alert.title}</p>
-                            <button
-                              onClick={e => { e.stopPropagation(); onDelete(alert.id); }}
-                              className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-600 p-1 rounded transition-all flex-shrink-0"
-                            >
+                            <button onClick={e => { e.stopPropagation(); onDelete(alert.id); }}
+                              className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-600 p-1 rounded transition-all flex-shrink-0">
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           </div>
@@ -156,26 +115,19 @@ function AlertPanel({ alerts, onClose, onMarkAsRead, onMarkAllAsRead, onDelete }
                   ))}
                 </div>
               )}
-
-              {/* Read */}
               {groupedAlerts.read.length > 0 && (
                 <div className="p-3 space-y-1.5 border-t border-slate-100">
                   <p className="text-xs font-bold text-slate-500 uppercase tracking-widest px-1 pt-1">Earlier</p>
                   {groupedAlerts.read.slice(0, 5).map(alert => (
-                    <div
-                      key={alert.id}
-                      onClick={() => { if (alert.link) window.location.href = alert.link; }}
-                      className="group relative p-3 border border-slate-200 rounded cursor-pointer hover:bg-slate-50 bg-white opacity-60 transition-all"
-                    >
+                    <div key={alert.id} onClick={() => { if (alert.link) window.location.href = alert.link; }}
+                      className="group relative p-3 border border-slate-200 rounded cursor-pointer hover:bg-slate-50 bg-white opacity-60 transition-all">
                       <div className="flex items-start gap-3">
                         <CheckCircle className="w-3.5 h-3.5 text-slate-400 flex-shrink-0 mt-0.5" />
                         <div className="flex-1 min-w-0">
                           <div className="flex items-start justify-between gap-2">
                             <p className="text-xs font-semibold text-slate-700 line-clamp-1">{alert.title}</p>
-                            <button
-                              onClick={e => { e.stopPropagation(); onDelete(alert.id); }}
-                              className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-600 p-1 rounded transition-all flex-shrink-0"
-                            >
+                            <button onClick={e => { e.stopPropagation(); onDelete(alert.id); }}
+                              className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-600 p-1 rounded transition-all flex-shrink-0">
                               <Trash2 className="w-3 h-3" />
                             </button>
                           </div>
@@ -190,19 +142,39 @@ function AlertPanel({ alerts, onClose, onMarkAsRead, onMarkAllAsRead, onDelete }
           )}
         </div>
 
-        {/* Footer */}
         {alerts.length > 0 && (
           <div className="px-5 py-3 border-t border-slate-200 bg-slate-50 flex-shrink-0">
-            <button
-              onClick={onClose}
-              className="w-full py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded hover:bg-slate-50 transition-colors"
-            >
+            <button onClick={onClose} className="w-full py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded hover:bg-slate-50 transition-colors">
               Close
             </button>
           </div>
         )}
       </div>
     </>
+  );
+}
+
+// ─── Unauthorized Page ────────────────────────────────────────────────────────
+function UnauthorizedPage() {
+  const navigate = useNavigate();
+  return (
+    <div className="flex-1 flex items-center justify-center min-h-[60vh] p-6">
+      <div className="text-center max-w-sm">
+        <div className="w-16 h-16 bg-slate-100 border border-slate-200 rounded flex items-center justify-center mx-auto mb-4">
+          <Shield className="w-8 h-8 text-slate-400" />
+        </div>
+        <h2 className="text-lg font-bold text-slate-900 mb-1">Access Restricted</h2>
+        <p className="text-sm text-slate-500 mb-5 leading-relaxed">
+          This page is only accessible to <span className="font-semibold text-slate-700">System Administrators</span>.
+        </p>
+        <button
+          onClick={() => navigate('/dashboard')}
+          className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded transition-colors"
+        >
+          Back to Dashboard
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -213,6 +185,7 @@ export default function AdminLayout() {
   const [userMenuOpen, setUserMenuOpen]                   = useState(false);
   const [alertPanelOpen, setAlertPanelOpen]               = useState(false);
   const [user, setUser]                                   = useState(null);
+  const [userRole, setUserRole]                           = useState(null); // ← NEW
   const [reportsDropdownOpen, setReportsDropdownOpen]     = useState(false);
   const [emergencyDropdownOpen, setEmergencyDropdownOpen] = useState(false);
   const [adminAlerts, setAdminAlerts]                     = useState([]);
@@ -222,7 +195,9 @@ export default function AdminLayout() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Inject scrollbar styles once on mount
+  const isSysAdmin = userRole === 'system_administrator'; // ← role gate
+
+  // Inject scrollbar styles
   useEffect(() => {
     const styleTag = document.createElement('style');
     styleTag.id = 'admin-scrollbar-styles';
@@ -230,10 +205,7 @@ export default function AdminLayout() {
       styleTag.textContent = scrollbarStyles;
       document.head.appendChild(styleTag);
     }
-    return () => {
-      const existing = document.getElementById('admin-scrollbar-styles');
-      if (existing) existing.remove();
-    };
+    return () => { document.getElementById('admin-scrollbar-styles')?.remove(); };
   }, []);
 
   useEffect(() => { getCurrentUser(); }, []);
@@ -243,6 +215,14 @@ export default function AdminLayout() {
       const { data: { user } } = await supabase.auth.getUser();
       setUser(user);
       if (user) {
+        // Fetch role from admin_users
+        const { data: adminData } = await supabase
+          .from('admin_users')
+          .select('role')
+          .eq('auth_user_id', user.id)
+          .single();
+        setUserRole(adminData?.role || null);
+
         fetchAdminAlerts(user.id);
         fetchUrgentEmergencies();
         subscribeToAdminAlerts(user.id);
@@ -333,18 +313,27 @@ export default function AdminLayout() {
     if (location.pathname === '/emergency' || location.pathname === '/emergency-evidence') setEmergencyDropdownOpen(true);
   }, [location.pathname]);
 
-  const navItems = [
+  // ── Nav items — sysAdminOnly flags restricted pages ──
+  const ALL_NAV_ITEMS = [
     { icon: Home,          label: 'Dashboard',    path: '/dashboard',     description: 'Overview'        },
-    { icon: FileText,      label: 'Reports',       path: '/reports',       description: 'User reports',    hasDropdown: true, submenu: [{ icon: Camera, label: 'Evidence', path: '/evidence',           description: 'Completion photos' }] },
+    { icon: FileText,      label: 'Reports',       path: '/reports',       description: 'User reports',    hasDropdown: true, submenu: [{ icon: Camera, label: 'Evidence', path: '/evidence', description: 'Completion photos' }] },
     { icon: Bell,          label: 'Emergency',     path: '/emergency',     description: 'Active alerts',   badge: urgentEmergenciesCount, urgent: urgentEmergenciesCount > 0, hasDropdown: true, submenu: [{ icon: Camera, label: 'Evidence', path: '/emergency-evidence', description: 'Completion photos' }] },
     { icon: Heart,         label: 'Medical',       path: '/medical',       description: 'Health requests' },
-    { icon: Users,         label: 'Residents',     path: '/residents',     description: 'Manage users'    },
+    { icon: Users,         label: 'Residents',     path: '/residents',     description: 'Manage users',    sysAdminOnly: true },
     { icon: MessageSquare, label: 'Announcements', path: '/announcements', description: 'Community posts' },
     { icon: BarChart3,     label: 'Analytics',     path: '/analytics',     description: 'Insights'        },
-    { icon: Shield,        label: 'Audit Logs',    path: '/audit-logs',    description: 'Track actions'   },
-    { icon: UserCog,       label: 'Admin Users',   path: '/admin-users',   description: 'Manage admins'   },
+    { icon: Shield,        label: 'Audit Logs',    path: '/audit-logs',    description: 'Track actions',   sysAdminOnly: true },
+    { icon: UserCog,       label: 'Admin Users',   path: '/admin-users',   description: 'Manage admins',   sysAdminOnly: true },
     { icon: Settings,      label: 'Settings',      path: '/settings',      description: 'Configure'       },
   ];
+
+  // Only show restricted items to system_administrator
+  const navItems = ALL_NAV_ITEMS.filter(item => !item.sysAdminOnly || isSysAdmin);
+
+  // Pages that require sysAdmin — used to gate <Outlet />
+  const RESTRICTED_PATHS = ['/residents', '/audit-logs', '/admin-users'];
+  const isRestrictedPage = RESTRICTED_PATHS.includes(location.pathname);
+  const showUnauthorized = isRestrictedPage && userRole !== null && !isSysAdmin;
 
   const handleLogout = async () => {
     try {
@@ -379,7 +368,7 @@ export default function AdminLayout() {
         sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
       }`}>
 
-        {/* Brand — pinned, never scrolls */}
+        {/* Brand */}
         <div className="flex-shrink-0 px-5 py-4 border-b border-slate-700 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <img src={EReportLogo} alt="E-Report Logo" className="w-10 h-10 object-contain" />
@@ -388,15 +377,26 @@ export default function AdminLayout() {
               <p className="text-xs text-slate-400 font-medium">Admin Dashboard</p>
             </div>
           </div>
-          <button
-            onClick={() => setSidebarOpen(false)}
-            className="lg:hidden text-slate-400 hover:text-white p-1.5 rounded transition-colors"
-          >
+          <button onClick={() => setSidebarOpen(false)} className="lg:hidden text-slate-400 hover:text-white p-1.5 rounded transition-colors">
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Navigation — scrollable, fills remaining space */}
+        {/* Role badge */}
+        {userRole && (
+          <div className="flex-shrink-0 px-5 py-2.5 border-b border-slate-700/60">
+            <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs font-bold uppercase tracking-wider ${
+              isSysAdmin
+                ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                : 'bg-slate-700 text-slate-400 border border-slate-600'
+            }`}>
+              <Shield className="w-3 h-3" />
+              {isSysAdmin ? 'System_administrator' : 'Operator'}
+            </span>
+          </div>
+        )}
+
+        {/* Navigation */}
         <nav className="flex-1 min-h-0 overflow-y-auto sidebar-scroll px-3 py-4">
           <p className="text-xs font-bold text-slate-500 uppercase tracking-widest px-2 mb-3">Navigation</p>
           <div className="space-y-0.5">
@@ -427,40 +427,27 @@ export default function AdminLayout() {
                     </div>
 
                     {item.badge > 0 ? (
-                      <span className={`flex-shrink-0 px-1.5 py-0.5 rounded text-xs font-bold ${
-                        item.urgent ? 'bg-red-500 text-white' : 'bg-slate-600 text-slate-200'
-                      }`}>
+                      <span className={`flex-shrink-0 px-1.5 py-0.5 rounded text-xs font-bold ${item.urgent ? 'bg-red-500 text-white' : 'bg-slate-600 text-slate-200'}`}>
                         {item.badge > 9 ? '9+' : item.badge}
                       </span>
                     ) : item.hasDropdown ? (
-                      <button
-                        onClick={e => toggleDropdown(e, item.label.toLowerCase())}
-                        className="p-1 rounded hover:bg-slate-600 transition-colors flex-shrink-0"
-                      >
+                      <button onClick={e => toggleDropdown(e, item.label.toLowerCase())} className="p-1 rounded hover:bg-slate-600 transition-colors flex-shrink-0">
                         <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${dropOpen ? 'rotate-180' : ''} text-slate-400`} />
                       </button>
                     ) : (
-                      <ChevronRight className={`w-3.5 h-3.5 flex-shrink-0 transition-all ${
-                        showActive ? 'text-slate-300' : 'text-slate-600 opacity-0 group-hover:opacity-100'
-                      }`} />
+                      <ChevronRight className={`w-3.5 h-3.5 flex-shrink-0 transition-all ${showActive ? 'text-slate-300' : 'text-slate-600 opacity-0 group-hover:opacity-100'}`} />
                     )}
                   </button>
 
-                  {/* Submenu */}
                   {item.hasDropdown && dropOpen && (
                     <div className="ml-8 mt-0.5 space-y-0.5">
                       {item.submenu.map(sub => {
                         const subActive = isActive(sub.path);
                         return (
-                          <button
-                            key={sub.path}
-                            onClick={() => { navigate(sub.path); setSidebarOpen(false); }}
+                          <button key={sub.path} onClick={() => { navigate(sub.path); setSidebarOpen(false); }}
                             className={`w-full group flex items-center gap-3 px-3 py-2 rounded transition-all text-left ${
-                              subActive
-                                ? 'bg-slate-700 text-white'
-                                : 'text-slate-500 hover:bg-slate-800 hover:text-slate-300'
-                            }`}
-                          >
+                              subActive ? 'bg-slate-700 text-white' : 'text-slate-500 hover:bg-slate-800 hover:text-slate-300'
+                            }`}>
                             <sub.icon className={`w-3.5 h-3.5 flex-shrink-0 ${subActive ? 'text-white' : 'text-slate-500 group-hover:text-slate-300'}`} />
                             <div className="text-left">
                               <p className={`text-xs font-semibold ${subActive ? 'text-white' : 'text-slate-400'}`}>{sub.label}</p>
@@ -477,24 +464,18 @@ export default function AdminLayout() {
           </div>
         </nav>
 
-        {/* Logout — pinned, never scrolls */}
+        {/* Logout */}
         <div className="flex-shrink-0 p-3 border-t border-slate-700">
-          <button
-            onClick={handleLogout}
-            className="w-full flex items-center gap-3 px-3 py-2.5 text-slate-400 hover:text-red-400 hover:bg-slate-800 rounded transition-all group"
-          >
+          <button onClick={handleLogout} className="w-full flex items-center gap-3 px-3 py-2.5 text-slate-400 hover:text-red-400 hover:bg-slate-800 rounded transition-all group">
             <LogOut className="w-4 h-4 flex-shrink-0" />
             <span className="text-xs font-semibold">Logout</span>
           </button>
         </div>
       </aside>
 
-      {/* Sidebar Overlay (mobile) */}
+      {/* Sidebar Overlay */}
       {sidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden"
-          onClick={() => setSidebarOpen(false)}
-        />
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />
       )}
 
       {/* ── Main Content ── */}
@@ -503,45 +484,33 @@ export default function AdminLayout() {
         {/* Header */}
         <header className={`bg-white border-b border-slate-200 sticky top-0 z-30 transition-shadow duration-300 ${scrolled ? 'shadow-md' : 'shadow-sm'}`}>
           <div className="flex items-center justify-between px-6 py-3.5">
-
-            {/* Left */}
             <div className="flex items-center gap-4">
-              <button
-                onClick={() => setSidebarOpen(true)}
-                className="lg:hidden text-slate-600 hover:bg-slate-100 p-2 rounded transition-all"
-              >
+              <button onClick={() => setSidebarOpen(true)} className="lg:hidden text-slate-600 hover:bg-slate-100 p-2 rounded transition-all">
                 <Menu className="w-5 h-5" />
               </button>
               <div>
                 <div className="text-xs text-slate-500 mb-0.5 uppercase tracking-widest font-semibold">
                   {navItems.find(i => i.path === location.pathname)?.description ||
-                   navItems.flatMap(i => i.submenu || []).find(s => s.path === location.pathname)?.description ||
+                   ALL_NAV_ITEMS.flatMap(i => i.submenu || []).find(s => s.path === location.pathname)?.description ||
                    'Overview'}
                 </div>
                 <h1 className="text-lg font-bold text-slate-900 tracking-tight">
                   {navItems.find(i => i.path === location.pathname)?.label ||
-                   navItems.flatMap(i => i.submenu || []).find(s => s.path === location.pathname)?.label ||
+                   ALL_NAV_ITEMS.flatMap(i => i.submenu || []).find(s => s.path === location.pathname)?.label ||
                    'Dashboard'}
                 </h1>
               </div>
             </div>
 
-            {/* Right */}
             <div className="flex items-center gap-3">
-
-              {/* Search */}
               <div className="hidden md:flex items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-slate-200 rounded border border-slate-200 transition-all cursor-pointer group">
                 <Search className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600" />
                 <span className="text-xs text-slate-500 group-hover:text-slate-700 transition-colors">Search...</span>
                 <kbd className="hidden lg:inline-block px-1.5 py-0.5 text-xs bg-white rounded border border-slate-300 text-slate-500 font-mono">⌘K</kbd>
               </div>
 
-              {/* Bell */}
               <div className="relative">
-                <button
-                  onClick={() => setAlertPanelOpen(p => !p)}
-                  className="relative p-2 text-slate-600 hover:bg-slate-100 border border-slate-200 rounded transition-all group"
-                >
+                <button onClick={() => setAlertPanelOpen(p => !p)} className="relative p-2 text-slate-600 hover:bg-slate-100 border border-slate-200 rounded transition-all group">
                   <Bell className="w-4 h-4 group-hover:text-slate-900 transition-colors" />
                   {unreadCount > 0 && (
                     <>
@@ -556,26 +525,15 @@ export default function AdminLayout() {
                   )}
                 </button>
                 {alertPanelOpen && (
-                  <AlertPanel
-                    alerts={adminAlerts}
-                    onClose={() => setAlertPanelOpen(false)}
-                    onMarkAsRead={handleMarkAsRead}
-                    onMarkAllAsRead={handleMarkAllAsRead}
-                    onDelete={handleDeleteAlert}
-                  />
+                  <AlertPanel alerts={adminAlerts} onClose={() => setAlertPanelOpen(false)}
+                    onMarkAsRead={handleMarkAsRead} onMarkAllAsRead={handleMarkAllAsRead} onDelete={handleDeleteAlert} />
                 )}
               </div>
 
-              {/* User Menu */}
               <div className="relative">
-                <button
-                  onClick={() => setUserMenuOpen(p => !p)}
-                  className="flex items-center gap-2.5 px-3 py-2 hover:bg-slate-100 border border-slate-200 rounded transition-all"
-                >
+                <button onClick={() => setUserMenuOpen(p => !p)} className="flex items-center gap-2.5 px-3 py-2 hover:bg-slate-100 border border-slate-200 rounded transition-all">
                   <div className="relative flex-shrink-0">
-                    <div className="w-8 h-8 bg-slate-700 rounded flex items-center justify-center text-white font-bold text-sm">
-                      {userInitial}
-                    </div>
+                    <div className="w-8 h-8 bg-slate-700 rounded flex items-center justify-center text-white font-bold text-sm">{userInitial}</div>
                     <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-white"></div>
                   </div>
                   <div className="hidden lg:block text-left">
@@ -592,28 +550,29 @@ export default function AdminLayout() {
                       <div className="px-4 py-3 border-b border-slate-100 bg-slate-50">
                         <p className="text-xs font-bold text-slate-900">{userName}</p>
                         <p className="text-xs text-slate-500 mt-0.5">{userEmail}</p>
+                        {userRole && (
+                          <span className={`inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider ${
+                            isSysAdmin ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'
+                          }`}>
+                            <Shield className="w-3 h-3" />
+                            {isSysAdmin ? 'System Admin' : 'Operator'}
+                          </span>
+                        )}
                       </div>
                       <div className="py-1">
-                        <button
-                          onClick={() => { setUserMenuOpen(false); navigate('/settings'); }}
-                          className="w-full flex items-center gap-3 px-4 py-2.5 text-slate-700 hover:bg-slate-50 transition-colors"
-                        >
+                        <button onClick={() => { setUserMenuOpen(false); navigate('/settings'); }}
+                          className="w-full flex items-center gap-3 px-4 py-2.5 text-slate-700 hover:bg-slate-50 transition-colors">
                           <Settings className="w-3.5 h-3.5 text-slate-500" />
                           <span className="text-xs font-medium">Account Settings</span>
                         </button>
-                        <button
-                          onClick={() => { setUserMenuOpen(false); navigate('/help'); }}
-                          className="w-full flex items-center gap-3 px-4 py-2.5 text-slate-700 hover:bg-slate-50 transition-colors"
-                        >
+                        <button onClick={() => { setUserMenuOpen(false); navigate('/help'); }}
+                          className="w-full flex items-center gap-3 px-4 py-2.5 text-slate-700 hover:bg-slate-50 transition-colors">
                           <HelpCircle className="w-3.5 h-3.5 text-slate-500" />
                           <span className="text-xs font-medium">Help & Support</span>
                         </button>
                       </div>
                       <div className="border-t border-slate-100">
-                        <button
-                          onClick={handleLogout}
-                          className="w-full flex items-center gap-3 px-4 py-2.5 text-red-600 hover:bg-red-50 transition-colors"
-                        >
+                        <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-2.5 text-red-600 hover:bg-red-50 transition-colors">
                           <LogOut className="w-3.5 h-3.5" />
                           <span className="text-xs font-semibold">Logout</span>
                         </button>
@@ -626,17 +585,14 @@ export default function AdminLayout() {
           </div>
         </header>
 
-        {/* Page Content */}
+        {/* Page Content — gate restricted routes */}
         <main className="flex-1 overflow-y-auto">
-          <Outlet />
+          {showUnauthorized ? <UnauthorizedPage /> : <Outlet />}
         </main>
 
-        {/* Footer */}
         <footer className="bg-white border-t border-slate-200 px-6 py-3 flex-shrink-0">
           <div className="flex items-center justify-between">
-            <p className="text-xs text-slate-500">
-              © 2025 <span className="font-semibold text-slate-700">Barangay E-Report+</span>
-            </p>
+            <p className="text-xs text-slate-500">© 2025 <span className="font-semibold text-slate-700">Barangay E-Report+</span></p>
             <div className="flex items-center gap-5">
               {['Documentation', 'Support', 'Privacy'].map(link => (
                 <a key={link} href="#" className="text-xs text-slate-500 hover:text-slate-800 font-medium transition-colors">{link}</a>
