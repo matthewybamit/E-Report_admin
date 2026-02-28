@@ -17,10 +17,32 @@ import {
 const QC_CENTER = [14.6760, 121.0437];
 const INITIAL_ZOOM = 13;
 
+// Smaller, sharper pinpoint icons (16×24 instead of 28×40)
 const createCustomIcon = (color) => L.divIcon({
-  className: 'custom-pin',
-  html: `<div style="background-color:${color};width:28px;height:28px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:2px solid white;box-shadow:0 2px 4px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;"><div style="width:8px;height:8px;background:white;border-radius:50%;"></div></div>`,
-  iconSize: [28, 40], iconAnchor: [14, 40], popupAnchor: [0, -43]
+  className: '',
+  html: `
+    <div style="position:relative;width:16px;height:24px;">
+      <div style="
+        width:16px;height:16px;
+        background:${color};
+        border-radius:50% 50% 50% 0;
+        transform:rotate(-45deg);
+        border:2px solid white;
+        box-shadow:0 1px 4px rgba(0,0,0,0.35);
+        position:absolute;top:0;left:0;
+      "></div>
+      <div style="
+        width:3px;height:8px;
+        background:${color};
+        position:absolute;bottom:0;left:50%;
+        transform:translateX(-50%);
+        border-radius:0 0 2px 2px;
+        opacity:0.7;
+      "></div>
+    </div>`,
+  iconSize:    [16, 24],
+  iconAnchor:  [8, 24],
+  popupAnchor: [0, -26],
 });
 
 const redIcon    = createCustomIcon('#ef4444');
@@ -28,14 +50,55 @@ const greenIcon  = createCustomIcon('#22c55e');
 const blueIcon   = createCustomIcon('#3b82f6');
 const orangeIcon = createCustomIcon('#f97316');
 
+// ─── Barangay Salvacion Boundary ──────────────────────────────────────────────
+const SALVACION_BOUNDARY = [
+  [14.6801, 121.0389],
+  [14.6812, 121.0401],
+  [14.6825, 121.0415],
+  [14.6834, 121.0428],
+  [14.6840, 121.0445],
+  [14.6838, 121.0462],
+  [14.6830, 121.0475],
+  [14.6818, 121.0483],
+  [14.6804, 121.0487],
+  [14.6789, 121.0484],
+  [14.6776, 121.0476],
+  [14.6767, 121.0463],
+  [14.6763, 121.0448],
+  [14.6765, 121.0431],
+  [14.6772, 121.0416],
+  [14.6783, 121.0404],
+  [14.6794, 121.0394],
+  [14.6801, 121.0389],
+];
+
+function haversineDistance([lat1, lng1], [lat2, lng2]) {
+  const R    = 6371000;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function computeCircumference(coords) {
+  let total = 0;
+  for (let i = 0; i < coords.length - 1; i++) {
+    total += haversineDistance(coords[i], coords[i + 1]);
+  }
+  return total;
+}
+
 // ─── Status / Priority Badges ─────────────────────────────────────────────────
 function StatusBadge({ status }) {
   const config = {
-    pending:      { bg: 'bg-amber-50',  text: 'text-amber-700',  border: 'border-amber-300'  },
-    'in-progress':{ bg: 'bg-blue-50',   text: 'text-blue-700',   border: 'border-blue-300'   },
-    dispatched:   { bg: 'bg-blue-50',   text: 'text-blue-700',   border: 'border-blue-300'   },
-    resolved:     { bg: 'bg-green-50',  text: 'text-green-700',  border: 'border-green-300'  },
-    rejected:     { bg: 'bg-red-50',    text: 'text-red-700',    border: 'border-red-300'    },
+    pending:       { bg: 'bg-amber-50',  text: 'text-amber-700',  border: 'border-amber-300'  },
+    'in-progress': { bg: 'bg-blue-50',   text: 'text-blue-700',   border: 'border-blue-300'   },
+    dispatched:    { bg: 'bg-blue-50',   text: 'text-blue-700',   border: 'border-blue-300'   },
+    resolved:      { bg: 'bg-green-50',  text: 'text-green-700',  border: 'border-green-300'  },
+    rejected:      { bg: 'bg-red-50',    text: 'text-red-700',    border: 'border-red-300'    },
   };
   const s = config[status] || config.pending;
   return (
@@ -58,9 +121,9 @@ function FullReportModal({ report, onClose, onUpdate }) {
   const handleQuickAction = async (action) => {
     try {
       const updates = {
-        assign:   { status: 'in-progress' },
-        resolve:  { status: 'resolved', resolved_at: new Date().toISOString() },
-        reject:   { status: 'rejected' },
+        assign:  { status: 'in-progress' },
+        resolve: { status: 'resolved', resolved_at: new Date().toISOString() },
+        reject:  { status: 'rejected' },
       }[action];
       await supabase.from('reports').update(updates).eq('id', report.id);
       onUpdate();
@@ -71,8 +134,6 @@ function FullReportModal({ report, onClose, onUpdate }) {
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
       <div className="bg-white rounded-lg shadow-2xl max-w-3xl w-full max-h-[92vh] overflow-hidden border border-slate-200">
-
-        {/* Header */}
         <div className="bg-slate-800 px-6 py-4 flex items-start justify-between">
           <div className="flex-1 min-w-0 pr-4">
             <div className="flex items-center gap-2 mb-1">
@@ -95,8 +156,6 @@ function FullReportModal({ report, onClose, onUpdate }) {
         </div>
 
         <div className="p-6 space-y-4 max-h-[calc(92vh-180px)] overflow-y-auto">
-
-          {/* Quick Actions */}
           {report.status === 'pending' && (
             <div className="border border-slate-200 rounded-lg overflow-hidden">
               <div className="bg-slate-50 border-b border-slate-200 px-4 py-2.5">
@@ -118,7 +177,6 @@ function FullReportModal({ report, onClose, onUpdate }) {
             </div>
           )}
 
-          {/* Reporter Info */}
           <div className="border border-slate-200 rounded-lg overflow-hidden">
             <div className="bg-slate-50 border-b border-slate-200 px-4 py-2.5">
               <p className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center gap-2">
@@ -145,7 +203,6 @@ function FullReportModal({ report, onClose, onUpdate }) {
             </div>
           </div>
 
-          {/* Report Details */}
           <div className="border border-slate-200 rounded-lg overflow-hidden">
             <div className="bg-slate-50 border-b border-slate-200 px-4 py-2.5">
               <p className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center gap-2">
@@ -171,7 +228,6 @@ function FullReportModal({ report, onClose, onUpdate }) {
             </div>
           </div>
 
-          {/* Location */}
           <div className="border border-slate-200 rounded-lg overflow-hidden">
             <div className="bg-slate-50 border-b border-slate-200 px-4 py-2.5">
               <p className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center gap-2">
@@ -193,7 +249,6 @@ function FullReportModal({ report, onClose, onUpdate }) {
             </div>
           </div>
 
-          {/* Image */}
           {report.image_url && (
             <div className="border border-slate-200 rounded-lg overflow-hidden">
               <div className="bg-slate-50 border-b border-slate-200 px-4 py-2.5">
@@ -207,7 +262,6 @@ function FullReportModal({ report, onClose, onUpdate }) {
             </div>
           )}
 
-          {/* Admin Notes */}
           {report.admin_notes && (
             <div className="border border-slate-200 rounded-lg overflow-hidden">
               <div className="bg-slate-50 border-b border-slate-200 px-4 py-2.5">
@@ -222,7 +276,6 @@ function FullReportModal({ report, onClose, onUpdate }) {
           )}
         </div>
 
-        {/* Footer */}
         <div className="bg-slate-50 border-t border-slate-200 px-6 py-3 flex gap-3">
           <button onClick={onClose} className="px-4 py-2 text-sm font-semibold text-slate-700 bg-white border border-slate-300 rounded hover:bg-slate-50 transition-colors">
             Close
@@ -235,7 +288,6 @@ function FullReportModal({ report, onClose, onUpdate }) {
           </button>
         </div>
 
-        {/* Lightbox */}
         {imageZoomed && (
           <div className="fixed inset-0 z-[2100] bg-black/95 flex items-center justify-center p-4" onClick={() => setImageZoomed(false)}>
             <button className="absolute top-4 right-4 text-white/70 hover:text-white bg-white/10 p-2 rounded-full transition-all" onClick={() => setImageZoomed(false)}>
@@ -267,8 +319,6 @@ function FullEmergencyModal({ emergency, onClose, onUpdate }) {
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
       <div className="bg-white rounded-lg shadow-2xl max-w-2xl w-full max-h-[92vh] overflow-hidden border border-slate-200">
-
-        {/* Header */}
         <div className="bg-slate-800 px-6 py-4 flex items-start justify-between">
           <div className="flex-1 min-w-0 pr-4">
             <div className="flex items-center gap-2 mb-1">
@@ -289,8 +339,6 @@ function FullEmergencyModal({ emergency, onClose, onUpdate }) {
         </div>
 
         <div className="p-6 space-y-4 max-h-[calc(92vh-180px)] overflow-y-auto">
-
-          {/* Quick Actions */}
           {emergency.status === 'pending' && (
             <div className="border border-slate-200 rounded-lg overflow-hidden">
               <div className="bg-slate-50 border-b border-slate-200 px-4 py-2.5">
@@ -306,7 +354,6 @@ function FullEmergencyModal({ emergency, onClose, onUpdate }) {
             </div>
           )}
 
-          {/* Emergency Details */}
           <div className="border border-slate-200 rounded-lg overflow-hidden">
             <div className="bg-slate-50 border-b border-slate-200 px-4 py-2.5">
               <p className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center gap-2">
@@ -332,7 +379,6 @@ function FullEmergencyModal({ emergency, onClose, onUpdate }) {
             </div>
           </div>
 
-          {/* Location */}
           <div className="border border-slate-200 rounded-lg overflow-hidden">
             <div className="bg-slate-50 border-b border-slate-200 px-4 py-2.5">
               <p className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center gap-2">
@@ -356,7 +402,6 @@ function FullEmergencyModal({ emergency, onClose, onUpdate }) {
             </div>
           </div>
 
-          {/* Responder Notes */}
           {emergency.responder_notes && (
             <div className="border border-slate-200 rounded-lg overflow-hidden">
               <div className="bg-slate-50 border-b border-slate-200 px-4 py-2.5">
@@ -370,7 +415,6 @@ function FullEmergencyModal({ emergency, onClose, onUpdate }) {
             </div>
           )}
 
-          {/* Evidence Photo */}
           {emergency.evidence_photo_url && (
             <div className="border border-slate-200 rounded-lg overflow-hidden">
               <div className="bg-slate-50 border-b border-slate-200 px-4 py-2.5">
@@ -383,7 +427,6 @@ function FullEmergencyModal({ emergency, onClose, onUpdate }) {
           )}
         </div>
 
-        {/* Footer */}
         <div className="bg-slate-50 border-t border-slate-200 px-6 py-3 flex gap-3">
           <button onClick={onClose} className="px-4 py-2 text-sm font-semibold text-slate-700 bg-white border border-slate-300 rounded hover:bg-slate-50 transition-colors">
             Close
@@ -405,25 +448,65 @@ function InteractiveMap({ markers, selectedMarker, onMarkerClick }) {
   const mapContainerRef = useRef(null);
   const mapInstanceRef  = useRef(null);
   const markersLayerRef = useRef(null);
+  const [circumference, setCircumference] = useState(null);
 
+  // Mount map once
   useEffect(() => {
     if (mapInstanceRef.current) return;
-    const map = L.map(mapContainerRef.current, { zoomControl: true, attributionControl: false }).setView(QC_CENTER, INITIAL_ZOOM);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { maxZoom: 20 }).addTo(map);
+
+    const map = L.map(mapContainerRef.current, {
+      zoomControl: true,
+      attributionControl: false,
+    }).setView(QC_CENTER, INITIAL_ZOOM);
+
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+      maxZoom: 20,
+    }).addTo(map);
+
     L.control.attribution({ position: 'bottomright' }).addTo(map);
+
+    // ── Barangay Salvacion boundary polygon ───────────────────────────────────
+    const polygon = L.polygon(SALVACION_BOUNDARY, {
+      color:       '#1e40af',
+      weight:      2,
+      opacity:     0.85,
+      fillColor:   '#3b82f6',
+      fillOpacity: 0.08,
+      dashArray:   '6, 4',
+    }).addTo(map);
+
+    const perimeterM  = computeCircumference(SALVACION_BOUNDARY);
+    const perimeterKm = (perimeterM / 1000).toFixed(3);
+    setCircumference({ meters: Math.round(perimeterM), km: perimeterKm });
+
+    polygon.bindTooltip(
+      `<div style="font-family:sans-serif;font-size:11px;font-weight:700;color:#1e3a8a;text-align:center;line-height:1.5;">
+        Brgy. Salvacion<br/>
+        <span style="font-weight:500;color:#3b82f6;font-size:10px;">⌀ ${perimeterKm} km perimeter</span>
+      </div>`,
+      { permanent: true, direction: 'center', className: 'salvacion-label' }
+    );
+
     const layerGroup = L.layerGroup().addTo(map);
     markersLayerRef.current = layerGroup;
     mapInstanceRef.current  = map;
-    return () => { map.remove(); mapInstanceRef.current = null; };
+
+    return () => {
+      map.remove();
+      mapInstanceRef.current = null;
+    };
   }, []);
 
+  // Update markers
   useEffect(() => {
     if (!mapInstanceRef.current || !markersLayerRef.current) return;
     markersLayerRef.current.clearLayers();
-    markers.forEach(marker => {
+
+    markers.forEach((marker) => {
       const lat = marker.latitude || marker.lat;
       const lng = marker.longitude || marker.lng;
       if (!lat || !lng) return;
+
       let icon = blueIcon;
       if (marker.type) {
         if (marker.severity === 'critical' || marker.severity === 'urgent') icon = redIcon;
@@ -434,14 +517,21 @@ function InteractiveMap({ markers, selectedMarker, onMarkerClick }) {
         else if (marker.priority === 'high') icon = orangeIcon;
         if (marker.status === 'resolved') icon = greenIcon;
       }
-      const lm = L.marker([lat, lng], { icon })
-        .bindPopup(`<div style="font-family:sans-serif;"><strong style="font-size:13px;">${marker.title || marker.type + ' Emergency'}</strong><br/><span style="color:#64748b;font-size:11px;">${marker.location || marker.location_text || 'Quezon City'}</span></div>`);
+
+      const lm = L.marker([lat, lng], { icon }).bindPopup(
+        `<div style="font-family:sans-serif;min-width:160px;">
+          <strong style="font-size:12px;color:#0f172a;">${marker.title || marker.type + ' Emergency'}</strong><br/>
+          <span style="color:#64748b;font-size:11px;">${marker.location || marker.location_text || 'Quezon City'}</span>
+        </div>`,
+        { maxWidth: 220 }
+      );
       lm.on('click', () => onMarkerClick(marker));
       lm.addTo(markersLayerRef.current);
       if (selectedMarker?.id === marker.id) lm.openPopup();
     });
   }, [markers, selectedMarker, onMarkerClick]);
 
+  // Fly to selected
   useEffect(() => {
     if (selectedMarker && mapInstanceRef.current) {
       const lat = selectedMarker.latitude || selectedMarker.lat;
@@ -453,8 +543,37 @@ function InteractiveMap({ markers, selectedMarker, onMarkerClick }) {
   return (
     <div className="relative w-full h-full rounded overflow-hidden border border-slate-200 z-0">
       <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />
+
+      {/* Live view badge */}
       <div className="absolute top-2 right-2 z-[500] bg-white/90 backdrop-blur-sm px-2.5 py-1 rounded border border-slate-200 text-xs font-semibold text-slate-600 shadow-sm">
         Quezon City Live View
+      </div>
+
+      {/* Salvacion circumference card */}
+      {circumference && (
+        <div className="absolute bottom-3 left-3 z-[500] bg-white/95 backdrop-blur-sm border border-blue-200 rounded-lg shadow-md px-3.5 py-2.5 min-w-[170px]">
+          <p className="text-xs font-bold text-blue-800 uppercase tracking-widest mb-1">Brgy. Salvacion</p>
+          <div className="flex items-baseline gap-1">
+            <span className="text-lg font-bold text-blue-700">{circumference.km}</span>
+            <span className="text-xs font-semibold text-blue-500">km</span>
+          </div>
+          <p className="text-xs text-slate-500 mt-0.5">{circumference.meters.toLocaleString()} m boundary perimeter</p>
+        </div>
+      )}
+
+      {/* Legend */}
+      <div className="absolute bottom-3 right-3 z-[500] bg-white/95 backdrop-blur-sm border border-slate-200 rounded-lg shadow-md px-3 py-2 space-y-1.5">
+        {[
+          { color: '#ef4444', label: 'Urgent' },
+          { color: '#f97316', label: 'High'   },
+          { color: '#3b82f6', label: 'Normal' },
+          { color: '#22c55e', label: 'Resolved'},
+        ].map(({ color, label }) => (
+          <div key={label} className="flex items-center gap-2">
+            <span style={{ background: color }} className="w-2.5 h-2.5 rounded-full flex-shrink-0" />
+            <span className="text-xs text-slate-600 font-medium">{label}</span>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -503,13 +622,13 @@ function MarkerDetailCard({ marker, onViewFull, dataType }) {
 export default function Dashboard() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [loading, setLoading] = useState(true);
-  const [selectedMarker, setSelectedMarker] = useState(null);
-  const [viewingReport, setViewingReport] = useState(null);
+  const [loading, setLoading]                   = useState(true);
+  const [selectedMarker, setSelectedMarker]     = useState(null);
+  const [viewingReport, setViewingReport]       = useState(null);
   const [viewingEmergency, setViewingEmergency] = useState(null);
-  const [filterStatus, setFilterStatus] = useState('all');
-  const [filterPriority, setFilterPriority] = useState('all');
-  const [dataType, setDataType] = useState('all');
+  const [filterStatus, setFilterStatus]         = useState('all');
+  const [filterPriority, setFilterPriority]     = useState('all');
+  const [dataType, setDataType]                 = useState('all');
   const [stats, setStats] = useState({
     totalReports: 0, totalEmergencies: 0, activeUsers: 0,
     urgentReports: 0, urgentEmergencies: 0,
@@ -519,8 +638,8 @@ export default function Dashboard() {
     todayReports: 0, todayEmergencies: 0, weekTrend: 0
   });
   const [recentActivity, setRecentActivity] = useState([]);
-  const [mapData, setMapData] = useState([]);
-  const [notifications, setNotifications] = useState([]);
+  const [mapData, setMapData]               = useState([]);
+  const [notifications, setNotifications]   = useState([]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -529,11 +648,11 @@ export default function Dashboard() {
       const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
       const [
-        { count: totalReports }, { count: urgentReports }, { count: resolvedReports },
-        { count: pendingReports }, { count: inProgressReports }, { count: todayReports },
-        { count: totalEmergencies }, { count: urgentEmergencies }, { count: resolvedEmergencies },
-        { count: pendingEmergencies }, { count: dispatchedEmergencies }, { count: todayEmergencies },
-        { count: activeUsers }, { count: lastWeekReports }
+        { count: totalReports },    { count: urgentReports },    { count: resolvedReports },
+        { count: pendingReports },  { count: inProgressReports },{ count: todayReports },
+        { count: totalEmergencies },{ count: urgentEmergencies },{ count: resolvedEmergencies },
+        { count: pendingEmergencies },{ count: dispatchedEmergencies },{ count: todayEmergencies },
+        { count: activeUsers },     { count: lastWeekReports }
       ] = await Promise.all([
         supabase.from('reports').select('*', { count: 'exact', head: true }),
         supabase.from('reports').select('*', { count: 'exact', head: true }).eq('priority', 'urgent').neq('status', 'resolved'),
@@ -556,14 +675,14 @@ export default function Dashboard() {
         : 0;
 
       setStats({
-        totalReports: totalReports || 0, totalEmergencies: totalEmergencies || 0,
-        urgentReports: urgentReports || 0, urgentEmergencies: urgentEmergencies || 0,
+        totalReports: totalReports || 0,       totalEmergencies: totalEmergencies || 0,
+        urgentReports: urgentReports || 0,     urgentEmergencies: urgentEmergencies || 0,
         resolvedReports: resolvedReports || 0, resolvedEmergencies: resolvedEmergencies || 0,
-        pendingReports: pendingReports || 0, pendingEmergencies: pendingEmergencies || 0,
+        pendingReports: pendingReports || 0,   pendingEmergencies: pendingEmergencies || 0,
         inProgressReports: inProgressReports || 0, dispatchedEmergencies: dispatchedEmergencies || 0,
         activeUsers: activeUsers || 0,
-        todayReports: todayReports || 0, todayEmergencies: todayEmergencies || 0,
-        weekTrend
+        todayReports: todayReports || 0,       todayEmergencies: todayEmergencies || 0,
+        weekTrend,
       });
 
       let activityData = [];
@@ -581,14 +700,14 @@ export default function Dashboard() {
       let mapItems = [];
       if (dataType !== 'emergencies') {
         let q = supabase.from('reports').select('*').limit(50);
-        if (filterStatus !== 'all')   q = q.eq('status', filterStatus);
+        if (filterStatus   !== 'all') q = q.eq('status',   filterStatus);
         if (filterPriority !== 'all') q = q.eq('priority', filterPriority);
         const { data } = await q;
         mapItems.push(...(data || []));
       }
       if (dataType !== 'reports') {
         let q = supabase.from('emergencies').select('*').limit(50);
-        if (filterStatus !== 'all')   q = q.eq('status', filterStatus);
+        if (filterStatus !== 'all') q = q.eq('status', filterStatus);
         const { data } = await q;
         mapItems.push(...(data || []));
       }
@@ -609,7 +728,7 @@ export default function Dashboard() {
   useEffect(() => {
     fetchData();
     const sub = supabase.channel('dashboard-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'reports' }, fetchData)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reports' },     fetchData)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'emergencies' }, fetchData)
       .subscribe();
     return () => sub.unsubscribe();
@@ -634,18 +753,18 @@ export default function Dashboard() {
   const inProgressPercent = stats.totalReports ? Math.round((stats.inProgressReports / stats.totalReports) * 100) : 0;
 
   const dataTypeTabs = [
-    { key: 'all',         label: 'All Data',           icon: Activity  },
-    { key: 'reports',     label: 'Reports Only',        icon: FileText  },
-    { key: 'emergencies', label: 'Emergencies Only',    icon: Ambulance },
+    { key: 'all',         label: 'All Data',        icon: Activity  },
+    { key: 'reports',     label: 'Reports Only',     icon: FileText  },
+    { key: 'emergencies', label: 'Emergencies Only', icon: Ambulance },
   ];
 
   const statCards = [
-    { label: 'Total Reports',     value: stats.totalReports,                              icon: FileText,    color: 'text-slate-700'  },
-    { label: 'Emergencies',       value: stats.totalEmergencies,                          icon: Ambulance,   color: 'text-red-600'    },
-    { label: 'Urgent / Critical', value: stats.urgentReports + stats.urgentEmergencies,   icon: Zap,         color: 'text-orange-600' },
-    { label: 'Pending',           value: stats.pendingReports + stats.pendingEmergencies, icon: Clock,       color: 'text-amber-600'  },
-    { label: 'Resolved',          value: stats.resolvedReports + stats.resolvedEmergencies, icon: CheckCircle, color: 'text-green-600' },
-    { label: 'Today',             value: stats.todayReports + stats.todayEmergencies,     icon: TrendingUp,  color: 'text-blue-600'   },
+    { label: 'Total Reports',     value: stats.totalReports,                                icon: FileText,    color: 'text-slate-700'  },
+    { label: 'Emergencies',       value: stats.totalEmergencies,                            icon: Ambulance,   color: 'text-red-600'    },
+    { label: 'Urgent / Critical', value: stats.urgentReports + stats.urgentEmergencies,     icon: Zap,         color: 'text-orange-600' },
+    { label: 'Pending',           value: stats.pendingReports + stats.pendingEmergencies,   icon: Clock,       color: 'text-amber-600'  },
+    { label: 'Resolved',          value: stats.resolvedReports + stats.resolvedEmergencies, icon: CheckCircle, color: 'text-green-600'  },
+    { label: 'Today',             value: stats.todayReports + stats.todayEmergencies,       icon: TrendingUp,  color: 'text-blue-600'   },
   ];
 
   return (
@@ -684,9 +803,7 @@ export default function Dashboard() {
             key={key}
             onClick={() => setDataType(key)}
             className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded text-xs font-bold uppercase tracking-wide transition-all ${
-              dataType === key
-                ? 'bg-slate-700 text-white shadow-sm'
-                : 'text-slate-600 hover:bg-slate-50'
+              dataType === key ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'
             }`}
           >
             <Icon className="w-3.5 h-3.5" />{label}
@@ -793,7 +910,6 @@ export default function Dashboard() {
             <InteractiveMap markers={mapData} selectedMarker={selectedMarker} onMarkerClick={setSelectedMarker} />
           </div>
 
-          {/* Selected Marker Card */}
           {selectedMarker && (
             <MarkerDetailCard marker={selectedMarker} onViewFull={handleViewItem} dataType={dataType} />
           )}
@@ -812,10 +928,10 @@ export default function Dashboard() {
             </div>
             <div className="space-y-3.5">
               {[
-                { label: 'Pending',     pct: pendingPercent,    bar: 'bg-amber-400',  text: 'text-amber-600'  },
-                { label: 'Urgent',      pct: urgentPercent,     bar: 'bg-red-500',    text: 'text-red-600'    },
-                { label: 'In Progress', pct: inProgressPercent, bar: 'bg-blue-500',   text: 'text-blue-600'   },
-                { label: 'Resolved',    pct: resolvedPercent,   bar: 'bg-green-500',  text: 'text-green-600'  },
+                { label: 'Pending',     pct: pendingPercent,    bar: 'bg-amber-400', text: 'text-amber-600'  },
+                { label: 'Urgent',      pct: urgentPercent,     bar: 'bg-red-500',   text: 'text-red-600'    },
+                { label: 'In Progress', pct: inProgressPercent, bar: 'bg-blue-500',  text: 'text-blue-600'   },
+                { label: 'Resolved',    pct: resolvedPercent,   bar: 'bg-green-500', text: 'text-green-600'  },
               ].map(({ label, pct, bar, text }) => (
                 <div key={label}>
                   <div className="flex justify-between text-xs mb-1.5">
@@ -830,16 +946,16 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Quick Actions */}
+          {/* Quick Navigation */}
           <div className="bg-white border border-slate-200 rounded-lg p-5 shadow-sm">
             <p className="text-xs font-bold text-slate-600 uppercase tracking-widest mb-3 flex items-center gap-2">
               <Zap className="w-3.5 h-3.5" />Quick Navigation
             </p>
             <div className="space-y-2">
               {[
-                { label: 'View All Reports',      icon: FileText,  color: 'text-slate-600',  path: '/reports'     },
-                { label: 'View All Emergencies',  icon: Ambulance, color: 'text-red-600',    path: '/emergency'   },
-                { label: 'Manage Responders',     icon: UserCheck, color: 'text-green-600',  path: '/responders'  },
+                { label: 'View All Reports',     icon: FileText,  color: 'text-slate-600', path: '/reports'    },
+                { label: 'View All Emergencies', icon: Ambulance, color: 'text-red-600',   path: '/emergency'  },
+                { label: 'Manage Responders',    icon: UserCheck, color: 'text-green-600', path: '/responders' },
               ].map(({ label, icon: Icon, color, path }) => (
                 <button
                   key={label}

@@ -1,11 +1,12 @@
 // src/components/AdminLayout.jsx
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Home, FileText, Users, Bell, Settings, LogOut, Menu, X,
   Heart, MessageSquare, HelpCircle, BarChart3, Search,
   ChevronRight, ChevronDown, Camera, AlertCircle, CheckCircle,
-  Clock, Trash2, Shield, UserCog,
+  Clock, Trash2, Shield, UserCog, Ambulance, Flame, AlertTriangle,
+  MapPin, ExternalLink,
 } from 'lucide-react';
 import { supabase } from '../config/supabase';
 import { logAuditAction } from '../utils/auditLogger';
@@ -24,7 +25,141 @@ const scrollbarStyles = `
   .panel-scroll::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 9999px; }
   .panel-scroll::-webkit-scrollbar-thumb:hover { background-color: #94a3b8; }
   .panel-scroll { scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent; }
+
+  @keyframes shrink-bar { from { width: 100%; } to { width: 0%; } }
+  @keyframes toast-in   { from { transform: translateX(110%); opacity: 0; }
+                           to   { transform: translateX(0);    opacity: 1; } }
+  @keyframes toast-out  { from { transform: translateX(0);    opacity: 1; }
+                           to   { transform: translateX(110%); opacity: 0; } }
+  .toast-enter { animation: toast-in  0.3s ease forwards; }
+  .toast-exit  { animation: toast-out 0.3s ease forwards; }
 `;
+
+// ─── Emergency Audio Alert (Web Audio API — no file needed) ──────────────────
+function playAlertSound() {
+  try {
+    const ctx        = new (window.AudioContext || window.webkitAudioContext)();
+    const oscillator = ctx.createOscillator();
+    const gain       = ctx.createGain();
+    oscillator.connect(gain);
+    gain.connect(ctx.destination);
+    oscillator.type = 'square';
+    [0, 0.28, 0.56].forEach((t) => {
+      oscillator.frequency.setValueAtTime(880, ctx.currentTime + t);
+      gain.gain.setValueAtTime(0.25, ctx.currentTime + t);
+      gain.gain.setValueAtTime(0,    ctx.currentTime + t + 0.18);
+    });
+    oscillator.start(ctx.currentTime);
+    oscillator.stop(ctx.currentTime + 0.9);
+  } catch { /* blocked by browser — fail silently */ }
+}
+
+// ─── Browser Push Notification ────────────────────────────────────────────────
+async function requestNotifPermission() {
+  if (!('Notification' in window)) return false;
+  if (Notification.permission === 'granted') return true;
+  if (Notification.permission === 'denied')  return false;
+  return (await Notification.requestPermission()) === 'granted';
+}
+
+function showPushNotification(emergency) {
+  if (Notification.permission !== 'granted') return;
+  const n = new Notification(`🚨 ${emergency.type} Emergency`, {
+    body:             `${emergency.description || 'New emergency reported'}\n📍 ${emergency.location_text || 'Unknown location'}`,
+    icon:             '/favicon.ico',
+    tag:              `emergency-${emergency.id}`,
+    requireInteraction: true,
+  });
+  n.onclick = () => { window.focus(); n.close(); };
+}
+
+// ─── Emergency Toast Card ─────────────────────────────────────────────────────
+const EMERGENCY_TYPE_CONFIG = {
+  Medical:  { icon: Ambulance,     bg: 'bg-red-600',    border: 'border-red-400',    ring: 'ring-red-400'    },
+  Fire:     { icon: Flame,         bg: 'bg-orange-600', border: 'border-orange-400', ring: 'ring-orange-400' },
+  Crime:    { icon: Shield,        bg: 'bg-purple-700', border: 'border-purple-400', ring: 'ring-purple-400' },
+  Accident: { icon: AlertTriangle, bg: 'bg-yellow-600', border: 'border-yellow-400', ring: 'ring-yellow-400' },
+};
+
+function EmergencyToast({ emergency, onDismiss, onView }) {
+  const [exiting, setExiting] = useState(false);
+  const cfg  = EMERGENCY_TYPE_CONFIG[emergency?.type] || EMERGENCY_TYPE_CONFIG.Accident;
+  const Icon = cfg.icon;
+
+  // Auto-dismiss after 12 s
+  useEffect(() => {
+    const t = setTimeout(handleDismiss, 12000);
+    return () => clearTimeout(t);
+  }, []);
+
+  const handleDismiss = () => {
+    setExiting(true);
+    setTimeout(() => onDismiss(emergency.id), 280);
+  };
+
+  return (
+    <div className={`w-[360px] bg-white rounded-xl shadow-2xl border ${cfg.border} ring-2 ${cfg.ring} overflow-hidden ${exiting ? 'toast-exit' : 'toast-enter'}`}>
+
+      {/* Header */}
+      <div className={`${cfg.bg} px-4 py-3 flex items-center justify-between`}>
+        <div className="flex items-center gap-2.5">
+          <div className="w-7 h-7 bg-white/20 rounded-full flex items-center justify-center">
+            <Icon className="w-4 h-4 text-white" />
+          </div>
+          <div>
+            <p className="text-white/80 text-xs font-bold uppercase tracking-widest leading-none">🚨 New Emergency</p>
+            <p className="text-white text-sm font-bold leading-tight mt-0.5">{emergency.type} Emergency</p>
+          </div>
+        </div>
+        <button onClick={handleDismiss} className="text-white/60 hover:text-white p-1 rounded transition-colors">
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+
+      {/* Body */}
+      <div className="px-4 py-3 space-y-1.5">
+        <p className="text-sm text-slate-800 font-semibold leading-snug line-clamp-2">
+          {emergency.description || 'Emergency reported — immediate attention required.'}
+        </p>
+        {(emergency.location_text || emergency.latitude) && (
+          <p className="text-xs text-slate-500 flex items-center gap-1.5">
+            <MapPin className="w-3 h-3 flex-shrink-0 text-slate-400" />
+            {emergency.location_text || `${emergency.latitude?.toFixed(5)}, ${emergency.longitude?.toFixed(5)}`}
+          </p>
+        )}
+        <p className="text-xs text-slate-400">
+          {new Date(emergency.created_at).toLocaleTimeString('en-US', {
+            hour: '2-digit', minute: '2-digit', second: '2-digit',
+          })}
+        </p>
+      </div>
+
+      {/* Actions */}
+      <div className="px-4 pb-3 flex gap-2">
+        <button
+          onClick={() => { onView(emergency); handleDismiss(); }}
+          className={`flex-1 flex items-center justify-center gap-1.5 py-2 ${cfg.bg} hover:opacity-90 text-white rounded text-xs font-bold transition-all`}
+        >
+          <ExternalLink className="w-3.5 h-3.5" />View & Respond
+        </button>
+        <button
+          onClick={handleDismiss}
+          className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded text-xs font-semibold transition-all"
+        >
+          Dismiss
+        </button>
+      </div>
+
+      {/* Shrinking countdown bar */}
+      <div className="h-1 bg-slate-100">
+        <div
+          className={`h-full ${cfg.bg} opacity-80`}
+          style={{ animation: 'shrink-bar 12s linear forwards' }}
+        />
+      </div>
+    </div>
+  );
+}
 
 // ─── Alert Panel ──────────────────────────────────────────────────────────────
 function AlertPanel({ alerts, onClose, onMarkAsRead, onMarkAllAsRead, onDelete }) {
@@ -47,11 +182,11 @@ function AlertPanel({ alerts, onClose, onMarkAsRead, onMarkAllAsRead, onDelete }
 
   const timeAgo = (date) => {
     const seconds = Math.floor((new Date() - new Date(date)) / 1000);
-    if (seconds < 60) return 'Just now';
+    if (seconds < 60)  return 'Just now';
     const minutes = Math.floor(seconds / 60);
-    if (minutes < 60) return `${minutes}m ago`;
+    if (minutes < 60)  return `${minutes}m ago`;
     const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours}h ago`;
+    if (hours < 24)    return `${hours}h ago`;
     return `${Math.floor(hours / 24)}d ago`;
   };
 
@@ -180,24 +315,29 @@ function UnauthorizedPage() {
 
 // ─── Main Layout ──────────────────────────────────────────────────────────────
 export default function AdminLayout() {
-  const [sidebarOpen, setSidebarOpen]                     = useState(false);
-  const [scrolled, setScrolled]                           = useState(false);
-  const [userMenuOpen, setUserMenuOpen]                   = useState(false);
-  const [alertPanelOpen, setAlertPanelOpen]               = useState(false);
-  const [user, setUser]                                   = useState(null);
-  const [userRole, setUserRole]                           = useState(null); // ← NEW
-  const [reportsDropdownOpen, setReportsDropdownOpen]     = useState(false);
-  const [emergencyDropdownOpen, setEmergencyDropdownOpen] = useState(false);
-  const [adminAlerts, setAdminAlerts]                     = useState([]);
-  const [unreadCount, setUnreadCount]                     = useState(0);
+  const [sidebarOpen, setSidebarOpen]                       = useState(false);
+  const [scrolled, setScrolled]                             = useState(false);
+  const [userMenuOpen, setUserMenuOpen]                     = useState(false);
+  const [alertPanelOpen, setAlertPanelOpen]                 = useState(false);
+  const [user, setUser]                                     = useState(null);
+  const [userRole, setUserRole]                             = useState(null);
+  const [reportsDropdownOpen, setReportsDropdownOpen]       = useState(false);
+  const [emergencyDropdownOpen, setEmergencyDropdownOpen]   = useState(false);
+  const [adminAlerts, setAdminAlerts]                       = useState([]);
+  const [unreadCount, setUnreadCount]                       = useState(0);
   const [urgentEmergenciesCount, setUrgentEmergenciesCount] = useState(0);
+
+  // ── Emergency Toast State ──────────────────────────────────────────────────
+  const [emergencyToasts, setEmergencyToasts] = useState([]);
+  const seenEmergencyIds                      = useRef(new Set());
+  const isFirstEmergencyLoad                  = useRef(true);
 
   const navigate = useNavigate();
   const location = useLocation();
 
-  const isSysAdmin = userRole === 'system_administrator'; // ← role gate
+  const isSysAdmin = userRole === 'system_administrator';
 
-  // Inject scrollbar styles
+  // ── Inject styles ──────────────────────────────────────────────────────────
   useEffect(() => {
     const styleTag = document.createElement('style');
     styleTag.id = 'admin-scrollbar-styles';
@@ -210,19 +350,76 @@ export default function AdminLayout() {
 
   useEffect(() => { getCurrentUser(); }, []);
 
+  // ── Seed existing emergency IDs so page-load doesn't spam ─────────────────
+  useEffect(() => {
+    const seedExistingEmergencies = async () => {
+      const { data } = await supabase
+        .from('emergencies')
+        .select('id')
+        .order('created_at', { ascending: false })
+        .limit(100);
+      (data || []).forEach(e => seenEmergencyIds.current.add(e.id));
+      isFirstEmergencyLoad.current = false;
+    };
+    seedExistingEmergencies();
+
+    // Request browser notification permission on mount
+    requestNotifPermission();
+  }, []);
+
+  // ── Emergency Realtime Listener ────────────────────────────────────────────
+  useEffect(() => {
+    const channel = supabase
+      .channel('emergency-live-notifier')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'emergencies' },
+        (payload) => {
+          const emergency = payload.new;
+          if (isFirstEmergencyLoad.current)          return;
+          if (seenEmergencyIds.current.has(emergency.id)) return;
+
+          seenEmergencyIds.current.add(emergency.id);
+
+          // 1. Audio beeps
+          playAlertSound();
+
+          // 2. OS-level browser push notification
+          showPushNotification(emergency);
+
+          // 3. In-app toast (max 4 stacked)
+          setEmergencyToasts(prev => [emergency, ...prev].slice(0, 4));
+
+          // 4. Bump the urgent count badge in sidebar
+          fetchUrgentEmergencies();
+        }
+      )
+      .subscribe();
+
+    return () => supabase.removeChannel(channel);
+  }, []);
+
+  // ── Dismiss a toast by ID ──────────────────────────────────────────────────
+  const dismissToast = useCallback((id) => {
+    setEmergencyToasts(prev => prev.filter(e => e.id !== id));
+  }, []);
+
+  // ── Navigate to emergency page from toast ─────────────────────────────────
+  const viewEmergencyFromToast = useCallback((emergency) => {
+    navigate(`/emergency?emergencyId=${emergency.id}`);
+  }, [navigate]);
+
   const getCurrentUser = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       setUser(user);
       if (user) {
-        // Fetch role from admin_users
         const { data: adminData } = await supabase
           .from('admin_users')
           .select('role')
           .eq('auth_user_id', user.id)
           .single();
         setUserRole(adminData?.role || null);
-
         fetchAdminAlerts(user.id);
         fetchUrgentEmergencies();
         subscribeToAdminAlerts(user.id);
@@ -254,13 +451,18 @@ export default function AdminLayout() {
 
   const subscribeToAdminAlerts = (userId) => {
     const channel = supabase.channel('admin-alerts-' + userId)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'admin_alerts', filter: `user_id=eq.${userId}` }, (payload) => {
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'admin_alerts',
+        filter: `user_id=eq.${userId}`,
+      }, (payload) => {
         if (payload.eventType === 'INSERT') {
           setAdminAlerts(prev => [payload.new, ...prev]);
           setUnreadCount(prev => prev + 1);
           if (payload.new.severity === 'urgent' && 'Notification' in window) {
             Notification.requestPermission().then(p => {
-              if (p === 'granted') new Notification(payload.new.title, { body: payload.new.message, icon: '/logo.png' });
+              if (p === 'granted') new Notification(payload.new.title, {
+                body: payload.new.message, icon: '/favicon.ico',
+              });
             });
           }
         } else if (payload.eventType === 'UPDATE') {
@@ -309,31 +511,30 @@ export default function AdminLayout() {
   }, []);
 
   useEffect(() => {
-    if (location.pathname === '/reports' || location.pathname === '/evidence') setReportsDropdownOpen(true);
-    if (location.pathname === '/emergency' || location.pathname === '/emergency-evidence') setEmergencyDropdownOpen(true);
+    if (location.pathname === '/reports' || location.pathname === '/evidence')
+      setReportsDropdownOpen(true);
+    if (location.pathname === '/emergency' || location.pathname === '/emergency-evidence')
+      setEmergencyDropdownOpen(true);
   }, [location.pathname]);
 
-  // ── Nav items — sysAdminOnly flags restricted pages ──
   const ALL_NAV_ITEMS = [
-    { icon: Home,          label: 'Dashboard',    path: '/dashboard',     description: 'Overview'        },
-    { icon: FileText,      label: 'Reports',       path: '/reports',       description: 'User reports',    hasDropdown: true, submenu: [{ icon: Camera, label: 'Evidence', path: '/evidence', description: 'Completion photos' }] },
-    { icon: Bell,          label: 'Emergency',     path: '/emergency',     description: 'Active alerts',   badge: urgentEmergenciesCount, urgent: urgentEmergenciesCount > 0, hasDropdown: true, submenu: [{ icon: Camera, label: 'Evidence', path: '/emergency-evidence', description: 'Completion photos' }] },
-    { icon: Heart,         label: 'Medical',       path: '/medical',       description: 'Health requests' },
-    { icon: Users,         label: 'Residents',     path: '/residents',     description: 'Manage users',    sysAdminOnly: true },
-    { icon: MessageSquare, label: 'Announcements', path: '/announcements', description: 'Community posts' },
-    { icon: BarChart3,     label: 'Analytics',     path: '/analytics',     description: 'Insights'        },
-    { icon: Shield,        label: 'Audit Logs',    path: '/audit-logs',    description: 'Track actions',   sysAdminOnly: true },
-    { icon: UserCog,       label: 'Admin Users',   path: '/admin-users',   description: 'Manage admins',   sysAdminOnly: true },
-    { icon: Settings,      label: 'Settings',      path: '/settings',      description: 'Configure'       },
+    { icon: Home,          label: 'Dashboard',    path: '/dashboard',          description: 'Overview'         },
+    { icon: FileText,      label: 'Reports',       path: '/reports',            description: 'User reports',     hasDropdown: true, submenu: [{ icon: Camera, label: 'Evidence', path: '/evidence', description: 'Completion photos' }] },
+    { icon: Bell,          label: 'Emergency',     path: '/emergency',          description: 'Active alerts',    badge: urgentEmergenciesCount, urgent: urgentEmergenciesCount > 0, hasDropdown: true, submenu: [{ icon: Camera, label: 'Evidence', path: '/emergency-evidence', description: 'Completion photos' }] },
+    { icon: Heart,         label: 'Medical',       path: '/medical',            description: 'Health requests'  },
+    { icon: Users,         label: 'Residents',     path: '/residents',          description: 'Manage users',     sysAdminOnly: true },
+    { icon: MessageSquare, label: 'Announcements', path: '/announcements',      description: 'Community posts'  },
+    { icon: BarChart3,     label: 'Analytics',     path: '/analytics',          description: 'Insights'         },
+    { icon: Shield,        label: 'Audit Logs',    path: '/audit-logs',         description: 'Track actions',    sysAdminOnly: true },
+    { icon: UserCog,       label: 'Admin Users',   path: '/admin-users',        description: 'Manage admins',    sysAdminOnly: true },
+    { icon: Settings,      label: 'Settings',      path: '/settings',           description: 'Configure'        },
   ];
 
-  // Only show restricted items to system_administrator
   const navItems = ALL_NAV_ITEMS.filter(item => !item.sysAdminOnly || isSysAdmin);
 
-  // Pages that require sysAdmin — used to gate <Outlet />
-  const RESTRICTED_PATHS = ['/residents', '/audit-logs', '/admin-users'];
-  const isRestrictedPage = RESTRICTED_PATHS.includes(location.pathname);
-  const showUnauthorized = isRestrictedPage && userRole !== null && !isSysAdmin;
+  const RESTRICTED_PATHS  = ['/residents', '/audit-logs', '/admin-users'];
+  const isRestrictedPage  = RESTRICTED_PATHS.includes(location.pathname);
+  const showUnauthorized  = isRestrictedPage && userRole !== null && !isSysAdmin;
 
   const handleLogout = async () => {
     try {
@@ -427,7 +628,7 @@ export default function AdminLayout() {
                     </div>
 
                     {item.badge > 0 ? (
-                      <span className={`flex-shrink-0 px-1.5 py-0.5 rounded text-xs font-bold ${item.urgent ? 'bg-red-500 text-white' : 'bg-slate-600 text-slate-200'}`}>
+                      <span className={`flex-shrink-0 px-1.5 py-0.5 rounded text-xs font-bold ${item.urgent ? 'bg-red-500 text-white animate-pulse' : 'bg-slate-600 text-slate-200'}`}>
                         {item.badge > 9 ? '9+' : item.badge}
                       </span>
                     ) : item.hasDropdown ? (
@@ -509,6 +710,7 @@ export default function AdminLayout() {
                 <kbd className="hidden lg:inline-block px-1.5 py-0.5 text-xs bg-white rounded border border-slate-300 text-slate-500 font-mono">⌘K</kbd>
               </div>
 
+              {/* Alert Bell */}
               <div className="relative">
                 <button onClick={() => setAlertPanelOpen(p => !p)} className="relative p-2 text-slate-600 hover:bg-slate-100 border border-slate-200 rounded transition-all group">
                   <Bell className="w-4 h-4 group-hover:text-slate-900 transition-colors" />
@@ -530,6 +732,7 @@ export default function AdminLayout() {
                 )}
               </div>
 
+              {/* User Menu */}
               <div className="relative">
                 <button onClick={() => setUserMenuOpen(p => !p)} className="flex items-center gap-2.5 px-3 py-2 hover:bg-slate-100 border border-slate-200 rounded transition-all">
                   <div className="relative flex-shrink-0">
@@ -585,7 +788,7 @@ export default function AdminLayout() {
           </div>
         </header>
 
-        {/* Page Content — gate restricted routes */}
+        {/* Page Content */}
         <main className="flex-1 overflow-y-auto">
           {showUnauthorized ? <UnauthorizedPage /> : <Outlet />}
         </main>
@@ -600,6 +803,19 @@ export default function AdminLayout() {
             </div>
           </div>
         </footer>
+      </div>
+
+      {/* ── Emergency Toast Stack (fixed top-right, above everything) ── */}
+      <div className="fixed top-4 right-4 z-[9999] flex flex-col gap-3 pointer-events-none">
+        {emergencyToasts.map((emergency) => (
+          <div key={emergency.id} className="pointer-events-auto">
+            <EmergencyToast
+              emergency={emergency}
+              onDismiss={dismissToast}
+              onView={viewEmergencyFromToast}
+            />
+          </div>
+        ))}
       </div>
     </div>
   );
