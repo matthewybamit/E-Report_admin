@@ -235,15 +235,14 @@ export default function Login() {
   const navigate       = useNavigate();
   const hasLoggedLogin = useRef(false);
 
-  const [formData, setFormData]             = useState({ email: '', password: '' });
-  const [showPassword, setShowPassword]     = useState(false);
-  const [loading, setLoading]               = useState(false);
-  const [error, setError]                   = useState('');
-  const [step, setStep]                     = useState('login');
+  const [formData, setFormData]         = useState({ email: '', password: '' });
+  const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading]           = useState(false);
+  const [error, setError]               = useState('');
+  const [step, setStep]                 = useState('login');
 
-  // ── Stores the active session + the OTP we generated ─────────────────────
-  const pendingUserRef = useRef(null);  // { user, session }
-  const pendingOtpRef  = useRef(null);  // the OTP code we sent
+  const pendingUserRef = useRef(null);
+  const pendingOtpRef  = useRef(null);
 
   useEffect(() => { checkAuth(); }, []);
 
@@ -279,33 +278,37 @@ export default function Login() {
     } catch (err) { console.error('Last login update error:', err); }
   };
 
-  // ── Send OTP via Supabase Edge Function or email notification ─────────────
-  // This uses your own notifications table so it bypasses Supabase rate limits
+  // ── Send OTP using Supabase's built-in email delivery ────────────────────
   const sendOtpEmail = async (email, otp, userId) => {
     try {
-      // Store OTP hash in DB so it's server-validated (optional but more secure)
-      await supabase
+      // Store OTP in DB for server-side validation (non-fatal if it fails)
+      const { error: dbError } = await supabase
         .from('admin_users')
         .update({
           pending_otp:            otp,
-          pending_otp_expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(), // 10 min
+          pending_otp_expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
         })
         .eq('auth_user_id', userId);
 
-      // Send via Supabase Edge Function (your existing notification system)
-      const { data: { session } } = await supabase.auth.getSession();
-      const { error } = await supabase.functions.invoke('send-otp-email', {
-        body: { email, otp },
-        headers: session?.access_token
-          ? { Authorization: `Bearer ${session.access_token}` }
-          : {},
+      if (dbError) console.warn('DB OTP store warning (non-fatal):', dbError);
+
+      // Sign out first so signInWithOtp works with a clean state
+      await supabase.auth.signOut();
+
+      const { error: otpError } = await supabase.auth.signInWithOtp({
+        email,
+        options: { shouldCreateUser: false },
       });
 
-      if (error) throw error;
+      if (otpError) {
+        console.error('signInWithOtp error:', otpError);
+        throw otpError;
+      }
+
       return { success: true };
     } catch (err) {
       console.error('sendOtpEmail error:', err);
-      return { error: 'Failed to send verification code. Please try again.' };
+      return { error: `Failed to send verification code: ${err.message || 'Please try again.'}` };
     }
   };
 
@@ -315,7 +318,7 @@ export default function Login() {
     setError('');
   };
 
-  // ── Step 1: Validate credentials → send OTP ───────────────────────────────
+  // ── Step 1: Validate credentials → check trust → send OTP ────────────────
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
@@ -344,7 +347,7 @@ export default function Login() {
         return;
       }
 
-      // ── Trusted device: skip 2FA ─────────────────────────────────────────
+      // ── Trusted device: skip 2FA entirely ───────────────────────────────
       if (isTrustedDevice(formData.email)) {
         await updateLastLogin(data.user.id);
         if (!hasLoggedLogin.current) {
@@ -360,8 +363,7 @@ export default function Login() {
         return;
       }
 
-      // ── Generate OTP locally and send via Edge Function ──────────────────
-      // Keep the session ACTIVE — no sign out needed
+      // ── Not trusted: stash user, generate + send OTP ─────────────────────
       pendingUserRef.current = { user: data.user, session: data.session };
       const otp = generateOtp();
       pendingOtpRef.current  = otp;
@@ -369,7 +371,6 @@ export default function Login() {
       const result = await sendOtpEmail(formData.email, otp, data.user.id);
       if (result.error) {
         setError(result.error);
-        await supabase.auth.signOut();
         pendingUserRef.current = null;
         pendingOtpRef.current  = null;
         setLoading(false);
@@ -386,67 +387,78 @@ export default function Login() {
     }
   };
 
-  // ── Resend: generate a new OTP and re-send ────────────────────────────────
+  // ── Resend: new OTP via Supabase built-in ─────────────────────────────────
   const handleResendOtp = async () => {
     if (!pendingUserRef.current) return { error: 'Session expired. Please log in again.' };
-    const otp = generateOtp();
-    pendingOtpRef.current = otp;
-    return await sendOtpEmail(formData.email, otp, pendingUserRef.current.user.id);
+
+    try {
+      const { error: otpError } = await supabase.auth.signInWithOtp({
+        email:   formData.email,
+        options: { shouldCreateUser: false },
+      });
+      if (otpError) throw otpError;
+      return { success: true };
+    } catch (err) {
+      console.error('Resend OTP error:', err);
+      return { error: `Failed to resend code: ${err.message || 'Please try again.'}` };
+    }
   };
 
-  // ── Step 2: Verify the code the user typed ────────────────────────────────
+  // ── Step 2: Verify OTP via Supabase verifyOtp ─────────────────────────────
   const handleOtpVerified = async (enteredCode, trustDevice) => {
-    if (!pendingOtpRef.current || !pendingUserRef.current) {
+    if (!pendingUserRef.current) {
       return { error: 'Session expired. Please log in again.' };
     }
 
-    // Compare against the code we generated
-    if (enteredCode !== pendingOtpRef.current) {
-      return { error: 'Invalid code. Please try again.' };
-    }
-
-    // Check OTP expiry from DB as extra server-side validation
     try {
-      const { data: adminData } = await supabase
-        .from('admin_users')
-        .select('pending_otp, pending_otp_expires_at')
-        .eq('auth_user_id', pendingUserRef.current.user.id)
-        .single();
+      const { data, error: verifyError } = await supabase.auth.verifyOtp({
+        email: formData.email,
+        token: enteredCode,
+        type:  'email',
+      });
 
-      if (adminData?.pending_otp !== enteredCode) {
-        return { error: 'Invalid code. Please try again.' };
-      }
-      if (adminData?.pending_otp_expires_at && new Date(adminData.pending_otp_expires_at) < new Date()) {
-        return { error: 'Code has expired. Please request a new one.' };
+      if (verifyError) {
+        console.error('verifyOtp error:', verifyError);
+        return { error: 'Invalid or expired code. Please try again.' };
       }
 
-      // Clear OTP from DB
-      await supabase
+      const user = data?.user ?? data?.session?.user;
+      if (!user) return { error: 'Verification error. Please log in again.' };
+
+      const isAdmin = await verifyAdminUser(user.id);
+      if (!isAdmin) {
+        await supabase.auth.signOut();
+        return { error: 'Access denied. Admin record not found.' };
+      }
+
+      // Clear OTP from DB (fire-and-forget)
+      supabase
         .from('admin_users')
         .update({ pending_otp: null, pending_otp_expires_at: null })
-        .eq('auth_user_id', pendingUserRef.current.user.id);
+        .eq('auth_user_id', user.id)
+        .then(() => {});
+
+      if (trustDevice) trustThisDevice(formData.email);
+      await updateLastLogin(user.id);
+
+      if (!hasLoggedLogin.current) {
+        hasLoggedLogin.current = true;
+        await logAuditAction({
+          action: 'login', actionType: 'auth',
+          description: `Admin logged in (2FA verified): ${user.email}`,
+          severity: 'info',
+        });
+      }
+
+      pendingOtpRef.current  = null;
+      pendingUserRef.current = null;
+      navigate('/dashboard', { replace: true });
+      return {};
 
     } catch (err) {
-      // DB check failed — fall back to local comparison which already passed above
-      console.warn('DB OTP validation skipped:', err);
+      console.error('handleOtpVerified error:', err);
+      return { error: 'Verification failed. Please try again.' };
     }
-
-    if (trustDevice) trustThisDevice(formData.email);
-
-    await updateLastLogin(pendingUserRef.current.user.id);
-
-    if (!hasLoggedLogin.current) {
-      hasLoggedLogin.current = true;
-      await logAuditAction({
-        action: 'login', actionType: 'auth',
-        description: `Admin logged in (2FA verified): ${pendingUserRef.current.user.email}`,
-        severity: 'info',
-      });
-    }
-
-    pendingOtpRef.current  = null;
-    navigate('/dashboard', { replace: true });
-    return {};
   };
 
   // ── Go back to login form ─────────────────────────────────────────────────
@@ -489,6 +501,7 @@ export default function Login() {
               </div>
             ))}
           </div>
+
           {step === 'otp' && (
             <div className="mt-8 flex items-center gap-2 bg-blue-900/40 border border-blue-700 rounded px-4 py-3">
               <KeyRound className="w-4 h-4 text-blue-400 flex-shrink-0" />
@@ -512,6 +525,7 @@ export default function Login() {
           </div>
         </div>
 
+        {/* ── OTP Step ── */}
         {step === 'otp' && (
           <OTPStep
             email={formData.email}
@@ -522,6 +536,7 @@ export default function Login() {
           />
         )}
 
+        {/* ── Login Step ── */}
         {step === 'login' && (
           <div className="w-full max-w-sm">
             <div className="mb-8">
