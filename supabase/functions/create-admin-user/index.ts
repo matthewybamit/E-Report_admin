@@ -23,12 +23,10 @@ serve(async (req) => {
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     const supabaseUrl    = Deno.env.get('SUPABASE_URL') ?? ''
 
-    // ✅ Auth-check client — verifies the caller's identity using their token
     const authCheckClient = createClient(supabaseUrl, serviceRoleKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     })
 
-    // ✅ DB client — always uses service role to bypass RLS on all tables
     const adminClient = createClient(supabaseUrl, serviceRoleKey, {
       auth: { autoRefreshToken: false, persistSession: false },
       global: {
@@ -72,10 +70,11 @@ serve(async (req) => {
     }
 
     const body = await req.json()
-    const { full_name, email, password, role, user_type } = body
-    console.log('BODY:', { full_name, email, role, user_type })
+    // ✅ removed `role` for responders — only team matters now
+    const { full_name, email, password, role, user_type, team } = body
+    console.log('BODY:', { full_name, email, role, user_type, team })
 
-    if (!full_name || !email || !password || !role) {
+    if (!full_name || !email || !password) {
       return new Response(
         JSON.stringify({ error: 'All fields are required.' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -88,7 +87,7 @@ serve(async (req) => {
       )
     }
 
-    // ── Step 1: Create the auth user ─────────────────────────────────────────
+    // ── Step 1: Create auth user ──────────────────────────────────────────────
     const { data: authData, error: authError } =
       await adminClient.auth.admin.createUser({
         email,
@@ -106,11 +105,9 @@ serve(async (req) => {
 
     const newUserId = authData.user.id
 
-    // ── Step 2: Branch by user_type ──────────────────────────────────────────
+    // ── Step 2: Branch by user_type ───────────────────────────────────────────
     if (user_type === 'responder') {
 
-      // The handle_new_user trigger may have already inserted a row into
-      // public.users. We UPDATE instead of INSERT to avoid duplicate key errors.
       console.log('UPDATING public.users, id:', newUserId)
       const { error: userUpdateError } = await adminClient
         .from('users')
@@ -131,7 +128,6 @@ serve(async (req) => {
         )
       }
 
-      // If no trigger exists, the update affects 0 rows — so we upsert as fallback
       console.log('UPSERTING public.users (fallback), id:', newUserId)
       const { error: userUpsertError } = await adminClient
         .from('users')
@@ -153,15 +149,16 @@ serve(async (req) => {
         )
       }
 
-      // Insert into responders
+      // ✅ Insert into responders — team replaces type
       console.log('INSERTING INTO responders table, id:', newUserId)
       const { error: responderInsertError } = await adminClient
         .from('responders')
         .insert({
           id:     newUserId,
           name:   full_name,
-          type:   role.toLowerCase(),
+          team:   (team ?? 'bpso').toLowerCase(),   // ✅ team column
           status: 'available',
+          // type column intentionally omitted
         })
       console.log('responders INSERT RESULT:', responderInsertError?.message ?? 'OK')
 
@@ -176,7 +173,7 @@ serve(async (req) => {
 
     } else {
 
-      // Admin user — direct insert into admin_users
+      // Admin user
       console.log('INSERTING INTO admin_users table, id:', newUserId)
       const { error: adminInsertError } = await adminClient
         .from('admin_users')

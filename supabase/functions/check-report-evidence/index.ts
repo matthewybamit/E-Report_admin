@@ -11,13 +11,11 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-// ✅ Detect if a URL points to a video file (Groq vision doesn't support video)
 function isVideoUrl(url: string): boolean {
   return /\.(mp4|mov|avi|webm|mkv|m4v|ogv)(\?|$)/i.test(url) ||
     url.includes('/report-videos/');
 }
 
-// ✅ Detect if a URL points to a supported image
 function isImageUrl(url: string): boolean {
   return /\.(jpe?g|png|gif|webp|bmp|tiff?)(\?|$)/i.test(url) ||
     url.includes('/report-images/');
@@ -57,19 +55,16 @@ serve(async (req) => {
       );
     }
 
-    // ✅ Resolve best image URL — skip video URLs for vision model
-    //    Priority: media_urls[0] → image_url → evidence_photo_url
-    //    Video URLs are noted but NOT passed to the vision model
+    // ── Resolve best image URL (skip videos) ─────────────────────────────────
     let imageUrl: string | null = null;
     let hasVideoOnly = false;
 
     if (Array.isArray(report.media_urls) && report.media_urls.length > 0) {
-      // Find the first image in media_urls (skip videos)
       const firstImage = report.media_urls.find((u: string) => isImageUrl(u) && !isVideoUrl(u));
       if (firstImage) {
         imageUrl = firstImage;
       } else if (report.media_urls.some((u: string) => isVideoUrl(u))) {
-        hasVideoOnly = true; // has media but only videos
+        hasVideoOnly = true;
       }
     }
 
@@ -81,7 +76,6 @@ serve(async (req) => {
       imageUrl = report.evidence_photo_url;
     }
 
-    // Check if there's a video (for context in the prompt)
     const hasVideo = hasVideoOnly ||
       !!report.video_url ||
       (Array.isArray(report.media_urls) && report.media_urls.some((u: string) => isVideoUrl(u)));
@@ -124,8 +118,8 @@ Return ONLY valid JSON, no markdown, no extra text:
     let messages: unknown[];
 
     if (imageUrl) {
-      // ✅ Vision model — only when we have a real image URL
-      model = "meta-llama/llama-4-maverick-17b-128e-instruct";
+      // ✅ llama-4-scout: Groq's current free vision model (replaces deprecated maverick)
+      model = "meta-llama/llama-4-scout-17b-16e-instruct";
       messages = [
         {
           role: "user",
@@ -136,7 +130,7 @@ Return ONLY valid JSON, no markdown, no extra text:
         },
       ];
     } else {
-      // ✅ Text-only fallback (video-only reports or no media)
+      // ✅ Text-only fallback for video-only or no-media reports
       model = "llama-3.3-70b-versatile";
       messages = [
         {
@@ -171,7 +165,7 @@ Return ONLY valid JSON, no markdown, no extra text:
       );
     }
 
-    const groqBody    = await groqRes.json();
+    const groqBody           = await groqRes.json();
     const rawContent: string = groqBody.choices?.[0]?.message?.content ?? "";
     console.log("Raw Groq output:", rawContent);
 
@@ -189,7 +183,7 @@ Return ONLY valid JSON, no markdown, no extra text:
       };
     }
 
-    // Write results back to DB
+    // ── Write results back to DB ──────────────────────────────────────────────
     if (SUPABASE_URL && SERVICE_ROLE_KEY) {
       const updateRes = await fetch(
         `${SUPABASE_URL}/rest/v1/reports?id=eq.${report.id}`,

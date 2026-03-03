@@ -5,14 +5,43 @@ import { logAuditAction } from '../utils/auditLogger';
 import {
   Shield, Clock, CheckCircle, XCircle, Plus, X,
   Eye, EyeOff, UserCog, RefreshCw, AlertCircle, Siren,
+  Users, ChevronDown, ChevronUp,
 } from 'lucide-react';
 
-// ─── Responder type options ───────────────────────────────────────────────────
-const RESPONDER_TYPES = [
-  { value: 'police',   label: 'Police',           color: 'bg-blue-50 text-blue-700 border-blue-300'       },
-  { value: 'fire',     label: 'Fire Brigade',      color: 'bg-orange-50 text-orange-700 border-orange-300' },
-  { value: 'medical',  label: 'Medical / BHS',     color: 'bg-green-50 text-green-700 border-green-300'    },
-  { value: 'disaster', label: 'Disaster Response', color: 'bg-purple-50 text-purple-700 border-purple-300' },
+// ─── Team Definitions ─────────────────────────────────────────────────────────
+const RESPONSE_TEAMS = [
+  {
+    value:       'bpso',
+    label:       'BPSO Team',
+    description: 'Barangay Public Safety Officers',
+    color:       'bg-blue-50 text-blue-700 border-blue-300',
+    dot:         'bg-blue-500',
+    header:      'bg-blue-700',
+  },
+  {
+    value:       'disaster',
+    label:       'Disaster Response Team',
+    description: 'Emergency & disaster operations',
+    color:       'bg-orange-50 text-orange-700 border-orange-300',
+    dot:         'bg-orange-500',
+    header:      'bg-orange-700',
+  },
+  {
+    value:       'bhert',
+    label:       'BHERT',
+    description: 'Barangay Health Emergency Response Team',
+    color:       'bg-green-50 text-green-700 border-green-300',
+    dot:         'bg-green-500',
+    header:      'bg-green-700',
+  },
+  {
+    value:       'general',
+    label:       'General Response',
+    description: 'Multi-purpose barangay responders',
+    color:       'bg-slate-50 text-slate-700 border-slate-300',
+    dot:         'bg-slate-400',
+    header:      'bg-slate-600',
+  },
 ];
 
 // ─── Tab Bar ──────────────────────────────────────────────────────────────────
@@ -20,8 +49,8 @@ function TabBar({ active, onChange }) {
   return (
     <div className="flex gap-1 bg-slate-100 border border-slate-200 rounded-lg p-1 w-fit">
       {[
-        { id: 'admins',     label: 'Admin Users', icon: Shield },
-        { id: 'responders', label: 'Responders',  icon: Siren  },
+        { id: 'admins',     label: 'Admin Users',    icon: Shield },
+        { id: 'responders', label: 'Response Teams', icon: Users  },
       ].map(({ id, label, icon: Icon }) => (
         <button
           key={id}
@@ -47,11 +76,12 @@ function CreateUserModal({ mode, onClose, onSuccess }) {
     full_name: '',
     email:     '',
     password:  '',
-    role:      isResponder ? 'police' : 'operator',
+    role:      isResponder ? '' : 'operator',  // role only used for admins
+    team:      isResponder ? 'bpso' : '',
   });
   const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading]           = useState(false);
-  const [error, setError]               = useState('');
+  const [loading,      setLoading]      = useState(false);
+  const [error,        setError]        = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -71,7 +101,8 @@ function CreateUserModal({ mode, onClose, onSuccess }) {
           full_name: form.full_name,
           email:     form.email,
           password:  form.password,
-          role:      form.role.toLowerCase(),
+          role:      isResponder ? undefined : form.role.toLowerCase(),
+          team:      isResponder ? form.team : undefined,
           user_type: isResponder ? 'responder' : 'admin',
         },
         headers: { Authorization: `Bearer ${session.access_token}` },
@@ -83,8 +114,10 @@ function CreateUserModal({ mode, onClose, onSuccess }) {
       await logAuditAction({
         action:      isResponder ? 'create_responder' : 'create_admin',
         actionType:  'admin_management',
-        description: `Created ${isResponder ? 'responder' : 'admin'}: ${form.email} (${form.role})`,
-        severity:    'info',
+        description: isResponder
+          ? `Created responder: ${form.email} (team: ${form.team})`
+          : `Created admin: ${form.email} (${form.role})`,
+        severity: 'info',
       });
 
       onSuccess();
@@ -100,8 +133,6 @@ function CreateUserModal({ mode, onClose, onSuccess }) {
     { value: 'operator',             label: 'Operator',             desc: 'Standard access' },
     { value: 'system_administrator', label: 'System Administrator', desc: 'Full access'     },
   ];
-
-  const options = isResponder ? RESPONDER_TYPES.map(t => ({ value: t.value, label: t.label, desc: '' })) : adminRoles;
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
@@ -187,35 +218,57 @@ function CreateUserModal({ mode, onClose, onSuccess }) {
             </div>
           </div>
 
-          {/* Role / Type */}
-          <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-widest mb-1.5">
-              {isResponder ? 'Responder Type' : 'Role'}
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              {options.map(r => (
-                <button
-                  key={r.value}
-                  type="button"
-                  onClick={() => setForm(p => ({ ...p, role: r.value }))}
-                  className={`p-3 rounded border text-left transition-all ${
-                    form.role === r.value
-                      ? 'bg-slate-800 border-slate-700'
-                      : 'bg-white border-slate-200 hover:bg-slate-50'
-                  }`}
-                >
-                  <p className={`text-xs font-bold ${form.role === r.value ? 'text-white' : 'text-slate-900'}`}>
-                    {r.label}
-                  </p>
-                  {r.desc && (
-                    <p className={`text-xs mt-0.5 ${form.role === r.value ? 'text-slate-300' : 'text-slate-500'}`}>
-                      {r.desc}
-                    </p>
-                  )}
-                </button>
-              ))}
+          {/* Admin Role picker — admins only */}
+          {!isResponder && (
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-widest mb-1.5">
+                Role
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                {adminRoles.map(r => (
+                  <button
+                    key={r.value}
+                    type="button"
+                    onClick={() => setForm(p => ({ ...p, role: r.value }))}
+                    className={`p-3 rounded border text-left transition-all ${
+                      form.role === r.value
+                        ? 'bg-slate-800 border-slate-700'
+                        : 'bg-white border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    <p className={`text-xs font-bold ${form.role === r.value ? 'text-white' : 'text-slate-900'}`}>{r.label}</p>
+                    <p className={`text-xs mt-0.5 ${form.role === r.value ? 'text-slate-300' : 'text-slate-500'}`}>{r.desc}</p>
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
+
+          {/* Team picker — responders only */}
+          {isResponder && (
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-widest mb-1.5">
+                Assign to Team
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                {RESPONSE_TEAMS.map(t => (
+                  <button
+                    key={t.value}
+                    type="button"
+                    onClick={() => setForm(p => ({ ...p, team: t.value }))}
+                    className={`p-3 rounded border text-left transition-all ${
+                      form.team === t.value
+                        ? 'bg-slate-800 border-slate-700'
+                        : 'bg-white border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    <p className={`text-xs font-bold ${form.team === t.value ? 'text-white' : 'text-slate-900'}`}>{t.label}</p>
+                    <p className={`text-xs mt-0.5 ${form.team === t.value ? 'text-slate-300' : 'text-slate-500'}`}>{t.description}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Actions */}
           <div className="flex gap-2 pt-2">
@@ -244,54 +297,9 @@ function CreateUserModal({ mode, onClose, onSuccess }) {
   );
 }
 
-// ─── Responders Tab ───────────────────────────────────────────────────────────
-function RespondersTab() {
-  const [responders, setResponders] = useState([]);
-  const [loading, setLoading]       = useState(true);
-  const [showModal, setShowModal]   = useState(false);
-
-  useEffect(() => { fetchResponders(); }, []);
-
-  const fetchResponders = async () => {
-    setLoading(true);
-    try {
-      // Step 1: fetch all responders — no join, no !inner
-      const { data: responderData, error: responderError } = await supabase
-        .from('responders')
-        .select('*')
-        .order('last_updated', { ascending: false, nullsFirst: false });
-
-      if (responderError) throw responderError;
-
-      if (!responderData || responderData.length === 0) {
-        setResponders([]);
-        return;
-      }
-
-      // Step 2: fetch matching public.users by id (left join equivalent)
-      const ids = responderData.map(r => r.id);
-      const { data: usersData } = await supabase
-        .from('users')
-        .select('id, email, account_status')
-        .in('id', ids);
-
-      // Step 3: merge user data onto each responder
-      const usersMap = Object.fromEntries((usersData || []).map(u => [u.id, u]));
-      setResponders(responderData.map(r => ({ ...r, user: usersMap[r.id] || null })));
-
-    } catch (err) {
-      console.error('Error fetching responders:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const getTypeStyle = (type) =>
-    RESPONDER_TYPES.find(t => t.value === type?.toLowerCase())?.color ||
-    'bg-slate-50 text-slate-600 border-slate-300';
-
-  const getTypeLabel = (type) =>
-    RESPONDER_TYPES.find(t => t.value === type?.toLowerCase())?.label || type || '—';
+// ─── Team Card ────────────────────────────────────────────────────────────────
+function TeamCard({ team, members }) {
+  const [expanded, setExpanded] = useState(true);
 
   const getStatusStyle = (status) => ({
     available: 'bg-green-50 text-green-700 border-green-300',
@@ -302,116 +310,216 @@ function RespondersTab() {
   const timeAgo = (date) => {
     if (!date) return 'Never';
     const seconds = Math.floor((new Date() - new Date(date)) / 1000);
-    if (seconds < 60) return 'Just now';
+    if (seconds < 60)  return 'Just now';
     const minutes = Math.floor(seconds / 60);
-    if (minutes < 60) return `${minutes}m ago`;
+    if (minutes < 60)  return `${minutes}m ago`;
     const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours}h ago`;
+    if (hours < 24)    return `${hours}h ago`;
     return `${Math.floor(hours / 24)}d ago`;
   };
 
+  const available = members.filter(r => r.status === 'available').length;
+  const busy      = members.filter(r => r.status === 'busy').length;
+
   return (
-    <>
-      <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
-        <div className="bg-slate-50 border-b border-slate-200 px-5 py-3 flex items-center justify-between">
-          <p className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center gap-2">
-            <Siren className="w-3.5 h-3.5" />Registered Responders
-          </p>
-          <div className="flex items-center gap-3">
-            <span className="text-xs text-slate-400">{responders.length} total</span>
-            <button
-              onClick={() => setShowModal(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-slate-800 hover:bg-slate-900 text-white rounded transition-colors"
-            >
-              <Plus className="w-3 h-3" />Add Responder
-            </button>
+    <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
+
+      {/* Team Header */}
+      <div className={`${team.header} px-5 py-3 flex items-center justify-between`}>
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 bg-white/20 rounded flex items-center justify-center">
+            <Users className="w-4 h-4 text-white" />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-white">{team.label}</h3>
+            <p className="text-xs text-white/70">{team.description}</p>
           </div>
         </div>
-
-        {loading ? (
-          <div className="flex items-center justify-center py-16">
-            <div className="w-6 h-6 border-2 border-slate-200 border-t-slate-600 rounded-full animate-spin" />
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 text-xs text-white/80">
+            <span className="flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-300" />{available} available
+            </span>
+            {busy > 0 && (
+              <span className="flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-300" />{busy} busy
+              </span>
+            )}
+            <span className="bg-white/20 px-2 py-0.5 rounded font-bold">{members.length} total</span>
           </div>
-        ) : responders.length === 0 ? (
-          <div className="text-center py-16">
-            <div className="w-12 h-12 bg-slate-100 border border-slate-200 rounded flex items-center justify-center mx-auto mb-3">
-              <Siren className="w-6 h-6 text-slate-400" />
-            </div>
-            <p className="text-sm font-semibold text-slate-600">No responders yet</p>
-            <p className="text-xs text-slate-400 mt-1">Add the first barangay responder.</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="border-b border-slate-200">
-                <tr>
-                  {['Responder', 'Type', 'Status', 'Last Active', 'Location'].map(h => (
-                    <th key={h} className="px-5 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-widest bg-slate-50">
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {responders.map(r => (
-                  <tr key={r.id} className="hover:bg-slate-50 transition-colors">
-
-                    {/* Responder Info */}
-                    <td className="px-5 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 bg-slate-700 rounded flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
-                          {r.name.charAt(0).toUpperCase()}
-                        </div>
-                        <div>
-                          <p className="text-sm font-semibold text-slate-900">{r.name}</p>
-                          {r.user?.email
-                            ? <p className="text-xs text-slate-500">{r.user.email}</p>
-                            : <p className="text-xs text-amber-600 font-medium">No linked user account</p>
-                          }
-                        </div>
-                      </div>
-                    </td>
-
-                    {/* Type */}
-                    <td className="px-5 py-4">
-                      <span className={`inline-flex items-center px-2.5 py-1 rounded border text-xs font-bold uppercase tracking-wider ${getTypeStyle(r.type)}`}>
-                        {getTypeLabel(r.type)}
-                      </span>
-                    </td>
-
-                    {/* Status */}
-                    <td className="px-5 py-4">
-                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded border text-xs font-semibold capitalize ${getStatusStyle(r.status)}`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${
-                          r.status === 'available' ? 'bg-green-500' :
-                          r.status === 'busy'      ? 'bg-amber-500' : 'bg-slate-400'
-                        }`} />
-                        {r.status || 'offline'}
-                      </span>
-                    </td>
-
-                    {/* Last Active */}
-                    <td className="px-5 py-4">
-                      <div className="flex items-center gap-1.5 text-xs text-slate-600">
-                        <Clock className="w-3.5 h-3.5 text-slate-400" />
-                        {timeAgo(r.last_updated)}
-                      </div>
-                    </td>
-
-                    {/* Location */}
-                    <td className="px-5 py-4 text-xs text-slate-500">
-                      {r.current_lat && r.current_lng
-                        ? `${r.current_lat.toFixed(4)}, ${r.current_lng.toFixed(4)}`
-                        : <span className="text-slate-400">No GPS data</span>
-                      }
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+          <button
+            onClick={() => setExpanded(p => !p)}
+            className="text-white/70 hover:text-white transition-colors"
+          >
+            {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          </button>
+        </div>
       </div>
+
+      {expanded && (
+        <>
+          {members.length === 0 ? (
+            <div className="text-center py-8">
+              <Users className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+              <p className="text-sm font-semibold text-slate-500">No members assigned</p>
+              <p className="text-xs text-slate-400 mt-1">Add responders to this team.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="border-b border-slate-200">
+                  <tr>
+                    {['Responder', 'Status', 'Last Active', 'Location'].map(h => (
+                      <th key={h} className="px-5 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-widest bg-slate-50">
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {members.map(r => (
+                    <tr key={r.id} className="hover:bg-slate-50 transition-colors">
+
+                      {/* Responder Info */}
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-9 h-9 ${team.header} rounded flex items-center justify-center text-white font-bold text-sm flex-shrink-0`}>
+                            {r.name.charAt(0).toUpperCase()}
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-slate-900">{r.name}</p>
+                            {r.user?.email
+                              ? <p className="text-xs text-slate-500">{r.user.email}</p>
+                              : <p className="text-xs text-amber-600 font-medium">No linked account</p>
+                            }
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Status */}
+                      <td className="px-5 py-4">
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded border text-xs font-semibold capitalize ${getStatusStyle(r.status)}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${
+                            r.status === 'available' ? 'bg-green-500' :
+                            r.status === 'busy'      ? 'bg-amber-500' : 'bg-slate-400'
+                          }`} />
+                          {r.status || 'offline'}
+                        </span>
+                      </td>
+
+                      {/* Last Active */}
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-1.5 text-xs text-slate-600">
+                          <Clock className="w-3.5 h-3.5 text-slate-400" />
+                          {timeAgo(r.last_updated)}
+                        </div>
+                      </td>
+
+                      {/* Location */}
+                      <td className="px-5 py-4 text-xs text-slate-500">
+                        {r.current_lat && r.current_lng
+                          ? `${r.current_lat.toFixed(4)}, ${r.current_lng.toFixed(4)}`
+                          : <span className="text-slate-400">No GPS data</span>
+                        }
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─── Responders Tab ───────────────────────────────────────────────────────────
+function RespondersTab() {
+  const [responders, setResponders] = useState([]);
+  const [loading,    setLoading]    = useState(true);
+  const [showModal,  setShowModal]  = useState(false);
+
+  useEffect(() => { fetchResponders(); }, []);
+
+  const fetchResponders = async () => {
+    setLoading(true);
+    try {
+      const { data: responderData, error: responderError } = await supabase
+        .from('responders')
+        .select('*')
+        .order('last_updated', { ascending: false, nullsFirst: false });
+
+      if (responderError) throw responderError;
+      if (!responderData || responderData.length === 0) {
+        setResponders([]); return;
+      }
+
+      const ids = responderData.map(r => r.id);
+      const { data: usersData } = await supabase
+        .from('users')
+        .select('id, email, account_status')
+        .in('id', ids);
+
+      const usersMap = Object.fromEntries((usersData || []).map(u => [u.id, u]));
+      setResponders(responderData.map(r => ({ ...r, user: usersMap[r.id] || null })));
+    } catch (err) {
+      console.error('Error fetching responders:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const totalAvailable = responders.filter(r => r.status === 'available').length;
+  const totalBusy      = responders.filter(r => r.status === 'busy').length;
+
+  return (
+    <>
+      {/* Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {[
+          { label: 'Total Responders', value: responders.length,    color: 'text-slate-700' },
+          { label: 'Available',        value: totalAvailable,        color: 'text-green-600' },
+          { label: 'On Duty',          value: totalBusy,             color: 'text-amber-600' },
+          { label: 'Teams',            value: RESPONSE_TEAMS.length, color: 'text-blue-600'  },
+        ].map(({ label, value, color }) => (
+          <div key={label} className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm">
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest">{label}</p>
+            <p className={`text-2xl font-bold mt-1 ${color}`}>{value}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Section Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-sm font-bold text-slate-700 uppercase tracking-widest">Response Teams</h2>
+          <p className="text-xs text-slate-400 mt-0.5">Organized per barangay structure</p>
+        </div>
+        <button
+          onClick={() => setShowModal(true)}
+          className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold bg-slate-800 hover:bg-slate-900 text-white rounded transition-colors shadow-sm"
+        >
+          <Plus className="w-3.5 h-3.5" />Add Responder
+        </button>
+      </div>
+
+      {/* Team Cards */}
+      {loading ? (
+        <div className="flex items-center justify-center py-20">
+          <div className="w-6 h-6 border-2 border-slate-200 border-t-slate-600 rounded-full animate-spin" />
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {RESPONSE_TEAMS.map(team => (
+            <TeamCard
+              key={team.value}
+              team={team}
+              members={responders.filter(r => (r.team || 'bpso') === team.value)}
+            />
+          ))}
+        </div>
+      )}
 
       {showModal && (
         <CreateUserModal
@@ -426,11 +534,11 @@ function RespondersTab() {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function AdminManagement() {
-  const [tab, setTab]                         = useState('admins');
-  const [admins, setAdmins]                   = useState([]);
-  const [loading, setLoading]                 = useState(true);
+  const [tab,             setTab]             = useState('admins');
+  const [admins,          setAdmins]          = useState([]);
+  const [loading,         setLoading]         = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [actionLoading, setActionLoading]     = useState(null);
+  const [actionLoading,   setActionLoading]   = useState(null);
 
   useEffect(() => { fetchAdmins(); }, []);
 
@@ -477,7 +585,7 @@ export default function AdminManagement() {
   };
 
   const sysAdmins = admins.filter(a => a.role === 'system_administrator');
-  const operators = admins.filter(a => a.role === 'operator');
+  const operators  = admins.filter(a => a.role === 'operator');
 
   return (
     <div className="p-6 space-y-6 min-h-screen bg-slate-50">
@@ -489,7 +597,7 @@ export default function AdminManagement() {
             <UserCog className="w-3.5 h-3.5" />Admin Management
           </div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Admin Users</h1>
-          <p className="text-sm text-slate-500 mt-0.5">Manage administrator accounts and responders</p>
+          <p className="text-sm text-slate-500 mt-0.5">Manage administrator accounts and response teams</p>
         </div>
         <div className="flex gap-2">
           <button
@@ -518,10 +626,10 @@ export default function AdminManagement() {
           {/* Stats */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {[
-              { label: 'Total Admins',  value: admins.length,                          color: 'text-slate-700' },
-              { label: 'System Admins', value: sysAdmins.length,                       color: 'text-amber-600' },
-              { label: 'Operators',     value: operators.length,                        color: 'text-blue-600'  },
-              { label: 'Active',        value: admins.filter(a => a.is_active).length,  color: 'text-green-600' },
+              { label: 'Total Admins',  value: admins.length,                         color: 'text-slate-700' },
+              { label: 'System Admins', value: sysAdmins.length,                      color: 'text-amber-600' },
+              { label: 'Operators',     value: operators.length,                       color: 'text-blue-600'  },
+              { label: 'Active',        value: admins.filter(a => a.is_active).length, color: 'text-green-600' },
             ].map(({ label, value, color }) => (
               <div key={label} className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm">
                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest">{label}</p>
@@ -560,8 +668,6 @@ export default function AdminManagement() {
                   <tbody className="divide-y divide-slate-100">
                     {admins.map(admin => (
                       <tr key={admin.id} className="hover:bg-slate-50 transition-colors">
-
-                        {/* Admin Info */}
                         <td className="px-5 py-4">
                           <div className="flex items-center gap-3">
                             <div className="w-9 h-9 bg-slate-700 rounded flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
@@ -573,8 +679,6 @@ export default function AdminManagement() {
                             </div>
                           </div>
                         </td>
-
-                        {/* Role */}
                         <td className="px-5 py-4">
                           <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded border text-xs font-bold uppercase tracking-wider ${
                             admin.role === 'system_administrator'
@@ -585,28 +689,20 @@ export default function AdminManagement() {
                             {admin.role === 'system_administrator' ? 'System Admin' : 'Operator'}
                           </span>
                         </td>
-
-                        {/* Status */}
                         <td className="px-5 py-4">
                           {admin.is_active
                             ? <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded border text-xs font-semibold bg-green-50 text-green-700 border-green-300"><CheckCircle className="w-3 h-3" />Active</span>
                             : <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded border text-xs font-semibold bg-red-50 text-red-700 border-red-300"><XCircle className="w-3 h-3" />Inactive</span>
                           }
                         </td>
-
-                        {/* Last Login */}
                         <td className="px-5 py-4">
                           <div className="flex items-center gap-1.5 text-xs text-slate-600">
                             <Clock className="w-3.5 h-3.5 text-slate-400" />{timeAgo(admin.last_login)}
                           </div>
                         </td>
-
-                        {/* Created */}
                         <td className="px-5 py-4 text-xs text-slate-500">
                           {new Date(admin.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                         </td>
-
-                        {/* Actions */}
                         <td className="px-5 py-4">
                           <button
                             onClick={() => toggleActive(admin)}
