@@ -70,7 +70,6 @@ serve(async (req) => {
     }
 
     const body = await req.json()
-    // ✅ removed `role` for responders — only team matters now
     const { full_name, email, password, role, user_type, team } = body
     console.log('BODY:', { full_name, email, role, user_type, team })
 
@@ -93,6 +92,11 @@ serve(async (req) => {
         email,
         password,
         email_confirm: true,
+        // ✅ ADDED: tells handle_new_user() trigger to skip public.users insert
+        user_metadata: {
+          account_type: user_type === 'responder' ? 'responder' : 'admin',
+          full_name,
+        },
       })
     console.log('AUTH CREATE:', authData?.user?.id, authError?.message)
 
@@ -149,16 +153,14 @@ serve(async (req) => {
         )
       }
 
-      // ✅ Insert into responders — team replaces type
       console.log('INSERTING INTO responders table, id:', newUserId)
       const { error: responderInsertError } = await adminClient
         .from('responders')
         .insert({
           id:     newUserId,
           name:   full_name,
-          team:   (team ?? 'bpso').toLowerCase(),   // ✅ team column
+          team:   (team ?? 'bpso').toLowerCase(),
           status: 'available',
-          // type column intentionally omitted
         })
       console.log('responders INSERT RESULT:', responderInsertError?.message ?? 'OK')
 
@@ -173,7 +175,6 @@ serve(async (req) => {
 
     } else {
 
-      // Admin user
       console.log('INSERTING INTO admin_users table, id:', newUserId)
       const { error: adminInsertError } = await adminClient
         .from('admin_users')

@@ -1,5 +1,5 @@
-// src/pages/Reports.jsx
-import { useState, useEffect, useCallback, useRef } from 'react';
+// src/pages/Reports.jsx — COMPLETE FIXED VERSION
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../config/supabase';
 import Groq from 'groq-sdk';
 import {
@@ -7,62 +7,33 @@ import {
   Phone, Mail, MessageSquare, CheckCircle, AlertCircle, XCircle, Wrench,
   Heart, Shield, Leaf, AlertTriangle, Send, Bot, Loader, Zap, Bell,
   Navigation, Radio, Video, Images, ChevronDown, ChevronUp, Maximize2,
-  Award, Flag, Clock3, Users, BarChart2,
+  Flag, Clock3, Users, BarChart2,
 } from 'lucide-react';
 import { logAuditAction } from '../utils/auditLogger';
-import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
-import 'leaflet/dist/leaflet.css';
-import L from 'leaflet';
 
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
-  iconUrl:       'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
-  shadowUrl:     'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-});
-
-const responderIcon = new L.Icon({
-  iconUrl:   'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-  iconSize: [25,41], iconAnchor: [12,41], popupAnchor: [1,-34], shadowSize: [41,41],
-});
-const destinationIcon = new L.Icon({
-  iconUrl:   'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-  iconSize: [25,41], iconAnchor: [12,41], popupAnchor: [1,-34], shadowSize: [41,41],
-});
-
-function MapUpdater({ responderLocation, reportLocation }) {
-  const map = useMap();
-  useEffect(() => {
-    if (responderLocation && reportLocation) {
-      const bounds = L.latLngBounds(
-        [responderLocation.lat, responderLocation.lng],
-        [reportLocation.lat,    reportLocation.lng]
-      );
-      map.fitBounds(bounds, { padding: [50, 50] });
-    }
-  }, [responderLocation, reportLocation, map]);
-  return null;
-}
+// ❌ REMOVED: All static Leaflet imports and top-level L usage are gone
+// import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
+// import 'leaflet/dist/leaflet.css';
+// import L from 'leaflet';
+// delete L.Icon.Default.prototype._getIconUrl; ← was crashing the whole app
+// L.Icon.Default.mergeOptions({ ... });
+// const responderIcon = new L.Icon({ ... });
+// const destinationIcon = new L.Icon({ ... });
+// function MapUpdater(...) { ... }  ← also removed from top level
 
 const groq = new Groq({
   apiKey: import.meta.env.VITE_GROQ_API_KEY,
   dangerouslyAllowBrowser: true,
 });
 
-// ─── Team config (must match AdminManagement) ──────────────────────────────
 const RESPONSE_TEAMS = [
-  { value: 'bpso',     label: 'BPSO Team',             description: 'Barangay Public Safety Officers',          header: 'bg-blue-700',   color: 'bg-blue-50 text-blue-700 border-blue-300'   },
-  { value: 'disaster', label: 'Disaster Response Team', description: 'Emergency & disaster operations',           header: 'bg-orange-700', color: 'bg-orange-50 text-orange-700 border-orange-300' },
-  { value: 'bhert',    label: 'BHERT',                  description: 'Barangay Health Emergency Response Team',   header: 'bg-green-700',  color: 'bg-green-50 text-green-700 border-green-300' },
-  { value: 'general',  label: 'General Response',       description: 'Multi-purpose barangay responders',         header: 'bg-slate-600',  color: 'bg-slate-50 text-slate-700 border-slate-300' },
+  { value: 'bpso',     label: 'BPSO Team',             description: 'Barangay Public Safety Officers',        header: 'bg-blue-700',   color: 'bg-blue-50 text-blue-700 border-blue-300'     },
+  { value: 'disaster', label: 'Disaster Response Team', description: 'Emergency & disaster operations',         header: 'bg-orange-700', color: 'bg-orange-50 text-orange-700 border-orange-300' },
+  { value: 'bhert',    label: 'BHERT',                  description: 'Barangay Health Emergency Response Team', header: 'bg-green-700',  color: 'bg-green-50 text-green-700 border-green-300'   },
+  { value: 'general',  label: 'General Response',       description: 'Multi-purpose barangay responders',       header: 'bg-slate-600',  color: 'bg-slate-50 text-slate-700 border-slate-300'   },
 ];
+const getTeamConfig = (team) => RESPONSE_TEAMS.find(t => t.value === team) || RESPONSE_TEAMS[3];
 
-const getTeamConfig = (team) =>
-  RESPONSE_TEAMS.find(t => t.value === team) || RESPONSE_TEAMS[3];
-
-// ─── AI ───────────────────────────────────────────────────────────────────────
 async function analyzeReportWithAI(reportData) {
   const { category, title, description, location } = reportData;
   const prompt = `You are an AI assistant for a barangay (local government) reporting system. Analyze this citizen report and provide a structured assessment.
@@ -108,10 +79,10 @@ SuggestedTeam: bpso | disaster | bhert | general`;
 // ─── Badges ───────────────────────────────────────────────────────────────────
 function StatusBadge({ status }) {
   const config = {
-    pending:      { bg: 'bg-amber-50', text: 'text-amber-800', border: 'border-amber-300', icon: AlertCircle, label: 'Pending'     },
-    'in-progress':{ bg: 'bg-blue-50',  text: 'text-blue-800',  border: 'border-blue-300',  icon: Loader,      label: 'In Progress' },
-    resolved:     { bg: 'bg-green-50', text: 'text-green-800', border: 'border-green-300', icon: CheckCircle, label: 'Resolved'    },
-    rejected:     { bg: 'bg-red-50',   text: 'text-red-800',   border: 'border-red-300',   icon: XCircle,     label: 'Rejected'    },
+    pending:       { bg: 'bg-amber-50', text: 'text-amber-800', border: 'border-amber-300', icon: AlertCircle, label: 'Pending'     },
+    'in-progress': { bg: 'bg-blue-50',  text: 'text-blue-800',  border: 'border-blue-300',  icon: Loader,      label: 'In Progress' },
+    resolved:      { bg: 'bg-green-50', text: 'text-green-800', border: 'border-green-300', icon: CheckCircle, label: 'Resolved'    },
+    rejected:      { bg: 'bg-red-50',   text: 'text-red-800',   border: 'border-red-300',   icon: XCircle,     label: 'Rejected'    },
   };
   const s = config[status] || config.pending;
   const Icon = s.icon;
@@ -165,8 +136,8 @@ function AIAssessmentPanel({ aiData, onAccept, onDismiss, accepting, scanning, o
     suspicious:  { label: 'Suspicious',     color: 'text-red-700',   bg: 'bg-red-50',   border: 'border-red-300',   dot: 'bg-red-500'   },
   };
 
-  const verdict = verdictConfig[aiData?.fraud?.verdict] || verdictConfig.uncertain;
-  const hasData = !!(aiData?.priority || aiData?.fraud);
+  const verdict       = verdictConfig[aiData?.fraud?.verdict] || verdictConfig.uncertain;
+  const hasData       = !!(aiData?.priority || aiData?.fraud);
   const suggestedTeam = aiData?.suggestedTeam ? getTeamConfig(aiData.suggestedTeam) : null;
 
   return (
@@ -181,10 +152,7 @@ function AIAssessmentPanel({ aiData, onAccept, onDismiss, accepting, scanning, o
           {canRun && (
             <button onClick={onRunAssessment} disabled={scanning}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-600 hover:bg-slate-500 disabled:opacity-50 text-white text-xs font-semibold rounded transition-colors border border-slate-500">
-              {scanning
-                ? <><Loader className="w-3.5 h-3.5 animate-spin" />Processing...</>
-                : <><BarChart2 className="w-3.5 h-3.5" />Run Full Assessment</>
-              }
+              {scanning ? <><Loader className="w-3.5 h-3.5 animate-spin" />Processing...</> : <><BarChart2 className="w-3.5 h-3.5" />Run Full Assessment</>}
             </button>
           )}
           {hasData && (
@@ -248,7 +216,7 @@ function AIAssessmentPanel({ aiData, onAccept, onDismiss, accepting, scanning, o
                   <ol className="space-y-1.5">
                     {aiData.suggestedActions.map((action, idx) => (
                       <li key={idx} className="flex items-start gap-2 text-sm text-slate-700">
-                        <span className="flex-shrink-0 w-5 h-5 bg-slate-200 text-slate-600 rounded text-xs font-bold flex items-center justify-center mt-0.5">{idx + 1}</span>
+                        <span className="shrink-0 w-5 h-5 bg-slate-200 text-slate-600 rounded text-xs font-bold flex items-center justify-center mt-0.5">{idx + 1}</span>
                         {action}
                       </li>
                     ))}
@@ -264,7 +232,7 @@ function AIAssessmentPanel({ aiData, onAccept, onDismiss, accepting, scanning, o
               <div className={`rounded border ${verdict.bg} ${verdict.border} p-4`}>
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
-                    <span className={`w-2.5 h-2.5 rounded-full ${verdict.dot} flex-shrink-0`} />
+                    <span className={`w-2.5 h-2.5 rounded-full ${verdict.dot} shrink-0`} />
                     <span className={`text-sm font-bold ${verdict.color} uppercase tracking-wide`}>{verdict.label}</span>
                   </div>
                   <span className="text-xs font-semibold text-slate-600 bg-white border border-slate-200 px-2 py-0.5 rounded">
@@ -284,11 +252,8 @@ function AIAssessmentPanel({ aiData, onAccept, onDismiss, accepting, scanning, o
               <p className="text-xs text-slate-500">
                 Accepting will update this report's priority to <strong className="text-slate-700 uppercase">{aiData.priority}</strong> and save the assessment notes.
               </p>
-              <div className="flex gap-2 flex-shrink-0">
-                <button onClick={onDismiss}
-                  className="px-4 py-2 text-xs font-semibold text-slate-600 bg-white border border-slate-300 rounded hover:bg-slate-100 transition-colors">
-                  Dismiss
-                </button>
+              <div className="flex gap-2 shrink-0">
+                <button onClick={onDismiss} className="px-4 py-2 text-xs font-semibold text-slate-600 bg-white border border-slate-300 rounded hover:bg-slate-100 transition-colors">Dismiss</button>
                 <button onClick={onAccept} disabled={accepting}
                   className="px-4 py-2 text-xs font-semibold text-white bg-slate-700 hover:bg-slate-800 disabled:opacity-50 rounded transition-colors flex items-center gap-1.5">
                   {accepting ? <><Loader className="w-3.5 h-3.5 animate-spin" />Applying...</> : <><CheckCircle className="w-3.5 h-3.5" />Accept Recommendations</>}
@@ -302,55 +267,208 @@ function AIAssessmentPanel({ aiData, onAccept, onDismiss, accepting, scanning, o
   );
 }
 
-// ─── Track Responder Modal ────────────────────────────────────────────────────
+// ─── Track Responder Modal (dynamic Leaflet — never crashes the page) ─────────
 function TrackResponderModal({ report, responder, onClose }) {
   const [responderLocation, setResponderLocation] = useState(null);
   const [responderStatus,   setResponderStatus]   = useState(null);
   const [loading,           setLoading]           = useState(true);
   const [distance,          setDistance]          = useState(null);
+  // ✅ Leaflet loaded dynamically so it NEVER blocks page render
+  const [leaflet,           setLeaflet]           = useState(null);
+
+  const responderId = responder?.id;
+  const reportId    = report?.id;
+  const reportLat   = report?.latitude;
+  const reportLng   = report?.longitude;
+
+  const calcDistance = useCallback((lat1, lon1, lat2, lon2) => {
+    if (!lat1 || !lon1 || !lat2 || !lon2) return;
+    const R    = 6371;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a    = Math.sin(dLat / 2) ** 2 +
+                 Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                 Math.sin(dLon / 2) ** 2;
+    setDistance((R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))).toFixed(2));
+  }, []);
+
+  // ✅ Load Leaflet dynamically on mount
+  useEffect(() => {
+    Promise.all([
+      import('leaflet'),
+      import('react-leaflet'),
+      import('leaflet/dist/leaflet.css'),
+    ]).then(([Lmod, RLmod]) => {
+      const L = Lmod.default;
+      delete L.Icon.Default.prototype._getIconUrl;
+      L.Icon.Default.mergeOptions({
+        iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+        iconUrl:       'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+        shadowUrl:     'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+      });
+      const blueIcon = new L.Icon({
+        iconUrl:   'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
+        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+        iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41],
+      });
+      const redIcon = new L.Icon({
+        iconUrl:   'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+        iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41],
+      });
+      setLeaflet({ L, ...RLmod, blueIcon, redIcon });
+    }).catch(err => console.error('Leaflet load error', err));
+  }, []);
 
   useEffect(() => {
-    if (!responder) return;
-    fetchResponderLocation();
-    const ch1 = supabase.channel(`responder-tracking-${responder.id}`)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'responders', filter: `id=eq.${responder.id}` },
-        payload => {
-          if (payload.new.current_lat && payload.new.current_lng) {
-            setResponderLocation({ lat: payload.new.current_lat, lng: payload.new.current_lng });
-            calcDistance(payload.new.current_lat, payload.new.current_lng, report.latitude, report.longitude);
-          }
-        }).subscribe();
-    const ch2 = supabase.channel(`job-status-${report.id}`)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'reports', filter: `id=eq.${report.id}` },
-        payload => setResponderStatus(payload.new.responder_status)).subscribe();
-    return () => { supabase.removeChannel(ch1); supabase.removeChannel(ch2); };
-  }, [responder, report]);
+    if (!responderId || !reportId) return;
 
-  const fetchResponderLocation = async () => {
-    try {
-      const { data } = await supabase.from('responders').select('current_lat, current_lng').eq('id', responder.id).single();
+    const init = async () => {
+      setLoading(true);
+      try {
+        const { data: rd } = await supabase
+          .from('responders')
+          .select('current_lat, current_lng')
+          .eq('id', responderId)
+          .single();
+        if (rd?.current_lat && rd?.current_lng) {
+          setResponderLocation({ lat: rd.current_lat, lng: rd.current_lng });
+          calcDistance(rd.current_lat, rd.current_lng, reportLat, reportLng);
+        }
+        const { data: rpt } = await supabase
+          .from('reports')
+          .select('responder_status')
+          .eq('id', reportId)
+          .single();
+        if (rpt) setResponderStatus(rpt.responder_status);
+      } catch (err) {
+        console.error('TrackResponderModal init error:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    init();
+
+    const ch1 = supabase
+      .channel(`responder-loc-${responderId}-${Date.now()}`)
+      .on('postgres_changes', {
+        event: 'UPDATE', schema: 'public', table: 'responders',
+        filter: `id=eq.${responderId}`,
+      }, ({ new: n }) => {
+        if (n.current_lat && n.current_lng) {
+          setResponderLocation({ lat: n.current_lat, lng: n.current_lng });
+          calcDistance(n.current_lat, n.current_lng, reportLat, reportLng);
+        }
+      }).subscribe();
+
+    const ch2 = supabase
+      .channel(`report-status-${reportId}-${Date.now()}`)
+      .on('postgres_changes', {
+        event: 'UPDATE', schema: 'public', table: 'reports',
+        filter: `id=eq.${reportId}`,
+      }, ({ new: n }) => setResponderStatus(n.responder_status))
+      .subscribe();
+
+    const poll = setInterval(async () => {
+      const { data } = await supabase
+        .from('responders')
+        .select('current_lat, current_lng')
+        .eq('id', responderId)
+        .single();
       if (data?.current_lat && data?.current_lng) {
         setResponderLocation({ lat: data.current_lat, lng: data.current_lng });
-        calcDistance(data.current_lat, data.current_lng, report.latitude, report.longitude);
+        calcDistance(data.current_lat, data.current_lng, reportLat, reportLng);
       }
-      const { data: job } = await supabase.from('reports').select('responder_status').eq('id', report.id).single();
-      if (job) setResponderStatus(job.responder_status);
-    } catch (err) { console.error(err); }
-    finally { setLoading(false); }
-  };
+    }, 8000);
 
-  const calcDistance = (lat1, lon1, lat2, lon2) => {
-    const R = 6371, dLat = (lat2 - lat1) * Math.PI / 180, dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
-    setDistance((R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))).toFixed(2));
-  };
+    return () => {
+      supabase.removeChannel(ch1);
+      supabase.removeChannel(ch2);
+      clearInterval(poll);
+    };
+  }, [responderId, reportId, reportLat, reportLng, calcDistance]);
 
   const statusLabel = { assigned: 'Assigned', en_route: 'En Route', on_scene: 'On Scene', completing: 'Completing' };
   const steps       = ['assigned', 'en_route', 'on_scene', 'completing'];
   const curStep     = steps.indexOf(responderStatus);
-  const teamCfg     = getTeamConfig(responder.team || 'bpso');
+  const teamCfg     = getTeamConfig(responder?.team || 'bpso');
+
+  // ✅ renderMap: only runs after Leaflet has loaded dynamically
+  const renderMap = () => {
+    if (!leaflet) {
+      return (
+        <div className="h-full flex items-center justify-center bg-slate-50">
+          <Loader className="w-6 h-6 text-slate-400 animate-spin" />
+        </div>
+      );
+    }
+
+    const { MapContainer, TileLayer, Marker, Popup, Polyline, useMap, blueIcon, redIcon, L } = leaflet;
+
+    function MapUpdater({ responderLocation, reportLocation }) {
+      const map = useMap();
+      useEffect(() => {
+        if (responderLocation && reportLocation) {
+          map.fitBounds(
+            L.latLngBounds(
+              [responderLocation.lat, responderLocation.lng],
+              [reportLocation.lat, reportLocation.lng],
+            ),
+            { padding: [50, 50] },
+          );
+        }
+      }, [responderLocation, reportLocation, map]);
+      return null;
+    }
+
+    if (responderLocation && reportLat && reportLng) {
+      return (
+        <MapContainer
+          center={[responderLocation.lat, responderLocation.lng]}
+          zoom={13}
+          style={{ height: '100%', width: '100%' }}
+        >
+          <TileLayer
+            attribution="&copy; OpenStreetMap contributors"
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          />
+          <Marker position={[responderLocation.lat, responderLocation.lng]} icon={blueIcon}>
+            <Popup><strong>{responder.name}</strong><br /><span className="text-xs">Current Location</span></Popup>
+          </Marker>
+          <Marker position={[reportLat, reportLng]} icon={redIcon}>
+            <Popup><strong>Destination</strong><br /><span className="text-xs">{report.title}</span></Popup>
+          </Marker>
+          <Polyline
+            positions={[[responderLocation.lat, responderLocation.lng], [reportLat, reportLng]]}
+            pathOptions={{ color: '#475569', weight: 3, dashArray: '8, 8' }}
+          />
+          <MapUpdater
+            responderLocation={responderLocation}
+            reportLocation={{ lat: reportLat, lng: reportLng }}
+          />
+        </MapContainer>
+      );
+    }
+
+    return (
+      <div className="h-full flex items-center justify-center bg-slate-50">
+        <div className="text-center px-6">
+          <MapPin className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+          <p className="text-slate-600 text-sm font-semibold">
+            {!responderLocation ? 'Waiting for GPS data...' : 'Report has no coordinates'}
+          </p>
+          <p className="text-xs text-slate-400 mt-2 leading-relaxed">
+            {!responderLocation
+              ? `The responder's device (${responder.name}) must have GPS active. GPS updates every 10 seconds.`
+              : 'The original report was submitted without GPS coordinates.'}
+          </p>
+        </div>
+      </div>
+    );
+  };
 
   if (!responder) return null;
+
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-lg shadow-2xl max-w-5xl w-full max-h-[90vh] overflow-hidden border border-slate-200">
@@ -367,73 +485,69 @@ function TrackResponderModal({ report, responder, onClose }) {
               </span>
             </p>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white p-2 rounded transition-colors"><X className="w-5 h-5" /></button>
+          <button onClick={onClose} className="text-slate-400 hover:text-white p-2 rounded transition-colors">
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
         <div className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
           {loading ? (
-            <div className="flex items-center justify-center py-16"><Loader className="w-8 h-8 text-slate-400 animate-spin" /></div>
+            <div className="flex flex-col items-center justify-center py-16 gap-3">
+              <Loader className="w-8 h-8 text-slate-400 animate-spin" />
+              <p className="text-sm text-slate-500">Fetching live GPS data...</p>
+            </div>
           ) : (
             <>
               <div className="grid grid-cols-3 gap-3">
                 {[
-                  { label: 'Status',   value: responderStatus ? (statusLabel[responderStatus] || 'Unknown') : 'Unknown' },
-                  { label: 'Distance', value: distance ? `${distance} km` : 'Calculating...' },
-                  { label: 'Location', value: responderLocation ? 'Live Feed Active' : 'Offline' },
+                  { label: 'Status',   value: responderStatus ? (statusLabel[responderStatus] || 'Unknown') : 'Assigned' },
+                  { label: 'Distance', value: distance ? `${distance} km away` : (reportLat && reportLng ? 'Calculating...' : 'No report coords') },
+                  { label: 'GPS Feed', value: responderLocation ? '● Live' : '○ Waiting for GPS...' },
                 ].map(({ label, value }) => (
                   <div key={label} className="bg-slate-50 border border-slate-200 rounded p-3">
                     <p className="text-xs text-slate-500 uppercase tracking-widest font-semibold mb-1">{label}</p>
-                    <p className="text-sm font-bold text-slate-800">{value}</p>
+                    <p className={`text-sm font-bold ${label === 'GPS Feed' && responderLocation ? 'text-green-700' : 'text-slate-800'}`}>{value}</p>
                   </div>
                 ))}
               </div>
 
+              {/* ✅ Map rendered via renderMap() — safe, dynamic, never crashes */}
               <div className="border border-slate-200 rounded overflow-hidden h-80">
-                {responderLocation && report.latitude && report.longitude ? (
-                  <MapContainer center={[responderLocation.lat, responderLocation.lng]} zoom={13} style={{ height: '100%', width: '100%' }}>
-                    <TileLayer attribution="&copy; OpenStreetMap contributors" url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                    <Marker position={[responderLocation.lat, responderLocation.lng]} icon={responderIcon}>
-                      <Popup><strong>{responder.name}</strong><br /><span className="text-xs">Current Location</span></Popup>
-                    </Marker>
-                    <Marker position={[report.latitude, report.longitude]} icon={destinationIcon}>
-                      <Popup><strong>Destination</strong><br /><span className="text-xs">{report.title}</span></Popup>
-                    </Marker>
-                    <Polyline positions={[[responderLocation.lat, responderLocation.lng],[report.latitude, report.longitude]]} pathOptions={{ color: '#475569', weight: 3, dashArray: '8, 8' }} />
-                    <MapUpdater responderLocation={responderLocation} reportLocation={{ lat: report.latitude, lng: report.longitude }} />
-                  </MapContainer>
-                ) : (
-                  <div className="h-full flex items-center justify-center bg-slate-50">
-                    <div className="text-center"><MapPin className="w-10 h-10 text-slate-300 mx-auto mb-2" /><p className="text-slate-500 text-sm">Location unavailable</p></div>
-                  </div>
-                )}
+                {renderMap()}
               </div>
 
               <div className="border border-slate-200 rounded p-4">
                 <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Response Timeline</p>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center">
                   {steps.map((s, idx) => (
-                    <div key={s} className="flex items-center gap-2 flex-1">
+                    <div key={s} className="flex items-center flex-1">
                       <div className="flex flex-col items-center gap-1 flex-1">
                         <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 ${
                           s === responderStatus ? 'bg-slate-700 text-white border-slate-700' :
-                          curStep > idx ? 'bg-green-600 text-white border-green-600' : 'bg-white text-slate-400 border-slate-300'
-                        }`}>{curStep > idx ? '✓' : idx + 1}</div>
+                          curStep > idx        ? 'bg-green-600 text-white border-green-600' :
+                                                 'bg-white text-slate-400 border-slate-300'
+                        }`}>
+                          {curStep > idx ? '✓' : idx + 1}
+                        </div>
                         <p className={`text-xs font-medium text-center ${
-                          s === responderStatus ? 'text-slate-800' : curStep > idx ? 'text-green-700' : 'text-slate-400'
+                          s === responderStatus ? 'text-slate-800' :
+                          curStep > idx        ? 'text-green-700'  : 'text-slate-400'
                         }`}>{statusLabel[s]}</p>
                       </div>
                       {idx < steps.length - 1 && (
-                        <div className={`h-0.5 flex-1 mb-4 ${curStep > idx ? 'bg-green-400' : 'bg-slate-200'}`} />
+                        <div className={`h-0.5 flex-1 mb-5 ${curStep > idx ? 'bg-green-400' : 'bg-slate-200'}`} />
                       )}
                     </div>
                   ))}
                 </div>
               </div>
 
-              {responderLocation && (
-                <a href={`https://www.google.com/maps/dir/?api=1&origin=${responderLocation.lat},${responderLocation.lng}&destination=${report.latitude},${report.longitude}&travelmode=driving`}
+              {responderLocation && reportLat && reportLng && (
+                <a
+                  href={`https://www.google.com/maps/dir/?api=1&origin=${responderLocation.lat},${responderLocation.lng}&destination=${reportLat},${reportLng}&travelmode=driving`}
                   target="_blank" rel="noreferrer"
-                  className="flex items-center justify-center gap-2 w-full py-2.5 bg-slate-700 hover:bg-slate-800 text-white text-sm font-semibold rounded transition-colors">
+                  className="flex items-center justify-center gap-2 w-full py-2.5 bg-slate-700 hover:bg-slate-800 text-white text-sm font-semibold rounded transition-colors"
+                >
                   <Navigation className="w-4 h-4" />Open Turn-by-Turn Directions
                 </a>
               )}
@@ -442,22 +556,24 @@ function TrackResponderModal({ report, responder, onClose }) {
         </div>
 
         <div className="bg-slate-50 border-t border-slate-200 px-6 py-3">
-          <button onClick={onClose} className="w-full py-2 text-sm font-semibold text-slate-700 bg-white border border-slate-300 rounded hover:bg-slate-50 transition-colors">Close</button>
+          <button onClick={onClose} className="w-full py-2 text-sm font-semibold text-slate-700 bg-white border border-slate-300 rounded hover:bg-slate-50 transition-colors">
+            Close
+          </button>
         </div>
       </div>
     </div>
   );
 }
 
-// ─── Deploy Team Modal (NEW: team-based + confirmation step) ──────────────────
+// ─── Deploy Team Modal — 3-step: Team → Lead Picker → Confirm ─────────────────
 function DeployTeamModal({ report, responders, onClose, onDeploy, aiSuggestedTeam }) {
-  const [selectedTeam,    setSelectedTeam]    = useState(aiSuggestedTeam || null);
-  const [confirming,      setConfirming]      = useState(false);   // confirmation step
-  const [deploying,       setDeploying]       = useState(false);
+  const [selectedTeam,   setSelectedTeam]   = useState(aiSuggestedTeam || null);
+  const [step,           setStep]           = useState(1);
+  const [selectedLeadId, setSelectedLeadId] = useState(null);
+  const [deploying,      setDeploying]      = useState(false);
 
   if (!report) return null;
 
-  // Group available responders by team
   const teamSummary = RESPONSE_TEAMS.map(team => {
     const members   = responders.filter(r => (r.team || 'bpso') === team.value);
     const available = members.filter(r => r.status === 'available');
@@ -466,190 +582,205 @@ function DeployTeamModal({ report, responders, onClose, onDeploy, aiSuggestedTea
   });
 
   const selectedTeamData = teamSummary.find(t => t.value === selectedTeam);
+  const selectedLead     = selectedTeamData?.available.find(m => m.id === selectedLeadId);
 
   const handleConfirmDeploy = async () => {
     setDeploying(true);
-    await onDeploy(selectedTeam, selectedTeamData);
+    await onDeploy(selectedTeam, selectedTeamData, selectedLeadId);
     setDeploying(false);
   };
 
-  // ── Step 1: Team Selection ──
-  if (!confirming) {
-    return (
-      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-lg shadow-2xl max-w-lg w-full border border-slate-200 overflow-hidden">
+  // Step 1: Team selection
+  if (step === 1) return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-lg shadow-2xl max-w-lg w-full border border-slate-200 overflow-hidden">
+        <div className="bg-slate-800 px-6 py-4">
+          <h2 className="text-sm font-bold text-white uppercase tracking-widest flex items-center gap-2">
+            <Send className="w-4 h-4" />Dispatch Response Team
+          </h2>
+          <p className="text-slate-400 text-xs mt-1">{report.report_number} — {report.title}</p>
+          {aiSuggestedTeam && (
+            <p className="text-xs text-slate-300 mt-1.5 flex items-center gap-1">
+              <Bot className="w-3.5 h-3.5" />AI recommends: <strong className="text-white ml-1">{getTeamConfig(aiSuggestedTeam).label}</strong>
+            </p>
+          )}
+        </div>
+        <div className="p-5 space-y-3">
+          <p className="text-xs text-slate-500 font-semibold uppercase tracking-widest">Step 1 of 3 — Select team:</p>
+          {teamSummary.map(team => {
+            const isSelected   = selectedTeam === team.value;
+            const isAiPick     = aiSuggestedTeam === team.value;
+            const hasAvailable = team.available.length > 0;
+            return (
+              <button key={team.value} onClick={() => hasAvailable && setSelectedTeam(team.value)}
+                disabled={!hasAvailable}
+                className={`w-full flex items-center justify-between p-4 rounded border-2 transition-all text-left disabled:opacity-40 disabled:cursor-not-allowed ${
+                  isSelected ? 'border-slate-700 bg-slate-50' : 'border-slate-200 hover:border-slate-400 bg-white'}`}>
+                <div className="flex items-center gap-3">
+                  <div className={`w-10 h-10 ${team.header} rounded flex items-center justify-center shrink-0`}>
+                    <Users className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-bold text-slate-900">{team.label}</p>
+                      {isAiPick && <span className="inline-flex items-center gap-1 text-xs bg-slate-700 text-white px-2 py-0.5 rounded font-semibold"><Bot className="w-3 h-3" />AI Pick</span>}
+                    </div>
+                    <p className="text-xs text-slate-500">{team.description}</p>
+                  </div>
+                </div>
+                <div className="flex flex-col items-end gap-1 shrink-0 ml-3">
+                  <span className="text-xs font-semibold text-green-700 bg-green-50 border border-green-300 px-2 py-0.5 rounded">{team.available.length} available</span>
+                  {team.busy.length > 0 && <span className="text-xs text-amber-600 bg-amber-50 border border-amber-300 px-2 py-0.5 rounded">{team.busy.length} busy</span>}
+                  {!hasAvailable && <span className="text-xs text-slate-500 bg-slate-100 border border-slate-300 px-2 py-0.5 rounded">Unavailable</span>}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+        <div className="bg-slate-50 border-t border-slate-200 px-5 py-4 flex gap-2">
+          <button onClick={onClose} className="flex-1 px-4 py-2.5 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded hover:bg-slate-50 transition-colors">Cancel</button>
+          <button onClick={() => { setSelectedLeadId(selectedTeamData?.available[0]?.id || null); setStep(2); }} disabled={!selectedTeam}
+            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold bg-slate-800 hover:bg-slate-900 text-white rounded transition-colors disabled:opacity-40">
+            Next: Pick Lead Responder →
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 
-          <div className="bg-slate-800 px-6 py-4">
+  // Step 2: Pick lead responder
+  if (step === 2) return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-lg shadow-2xl max-w-lg w-full border border-slate-200 overflow-hidden">
+        <div className="bg-slate-800 px-6 py-4 flex items-center justify-between">
+          <div>
             <h2 className="text-sm font-bold text-white uppercase tracking-widest flex items-center gap-2">
-              <Send className="w-4 h-4" />Dispatch Response Team
+              <Radio className="w-4 h-4 text-slate-300" />Pick Lead Responder
             </h2>
-            <p className="text-slate-400 text-xs mt-1">{report.report_number} — {report.title}</p>
-            {aiSuggestedTeam && (
-              <p className="text-xs text-slate-300 mt-1.5 flex items-center gap-1">
-                <Bot className="w-3.5 h-3.5" />
-                AI recommends: <strong className="text-white ml-1">{getTeamConfig(aiSuggestedTeam).label}</strong>
-              </p>
-            )}
+            <p className="text-slate-400 text-xs mt-1">{selectedTeamData?.label} — Step 2 of 3</p>
           </div>
-
-          <div className="p-5 space-y-3">
-            <p className="text-xs text-slate-500 font-semibold uppercase tracking-widest">Select a team to dispatch:</p>
-            {teamSummary.map(team => {
-              const isSelected   = selectedTeam === team.value;
-              const isAiPick     = aiSuggestedTeam === team.value;
-              const hasAvailable = team.available.length > 0;
+          <button onClick={() => setStep(1)} className="text-slate-400 hover:text-white p-1.5 rounded"><X className="w-4 h-4" /></button>
+        </div>
+        <div className="p-5">
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4 flex items-start gap-2">
+            <Navigation className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+            <p className="text-xs text-blue-800 font-medium">
+              Select <strong>one member</strong> whose GPS will be tracked on the map. All available members will be dispatched.
+            </p>
+          </div>
+          <p className="text-xs text-slate-500 font-semibold uppercase tracking-widest mb-3">Available — {selectedTeamData?.available.length} members:</p>
+          <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+            {selectedTeamData?.available.map((member) => {
+              const isSelected = selectedLeadId === member.id;
+              const hasGPS     = member.current_lat && member.current_lng;
               return (
-                <button
-                  key={team.value}
-                  onClick={() => hasAvailable && setSelectedTeam(team.value)}
-                  disabled={!hasAvailable}
-                  className={`w-full flex items-center justify-between p-4 rounded border-2 transition-all text-left disabled:opacity-40 disabled:cursor-not-allowed ${
-                    isSelected
-                      ? 'border-slate-700 bg-slate-50'
-                      : 'border-slate-200 hover:border-slate-400 bg-white'
-                  }`}
-                >
+                <button key={member.id} onClick={() => setSelectedLeadId(member.id)}
+                  className={`w-full flex items-center justify-between p-3.5 rounded border-2 transition-all text-left ${
+                    isSelected ? 'border-slate-700 bg-slate-50' : 'border-slate-200 hover:border-slate-400 bg-white'}`}>
                   <div className="flex items-center gap-3">
-                    <div className={`w-10 h-10 ${team.header} rounded flex items-center justify-center flex-shrink-0`}>
-                      <Users className="w-5 h-5 text-white" />
+                    <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${isSelected ? 'bg-slate-700 text-white' : 'bg-slate-200 text-slate-700'}`}>
+                      {member.name?.charAt(0)?.toUpperCase()}
                     </div>
                     <div>
-                      <div className="flex items-center gap-2">
-                        <p className="text-sm font-bold text-slate-900">{team.label}</p>
-                        {isAiPick && (
-                          <span className="inline-flex items-center gap-1 text-xs bg-slate-700 text-white px-2 py-0.5 rounded font-semibold">
-                            <Bot className="w-3 h-3" />AI Pick
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-xs text-slate-500">{team.description}</p>
+                      <p className="text-sm font-bold text-slate-900">{member.name}</p>
+                      <span className={`text-xs font-medium flex items-center gap-1 ${hasGPS ? 'text-green-600' : 'text-amber-600'}`}>
+                        <MapPin className="w-3 h-3" />{hasGPS ? 'GPS Active' : 'No GPS yet'}
+                      </span>
                     </div>
                   </div>
-                  <div className="flex flex-col items-end gap-1 flex-shrink-0 ml-3">
-                    <span className="text-xs font-semibold text-green-700 bg-green-50 border border-green-300 px-2 py-0.5 rounded">
-                      {team.available.length} available
-                    </span>
-                    {team.busy.length > 0 && (
-                      <span className="text-xs text-amber-600 bg-amber-50 border border-amber-300 px-2 py-0.5 rounded">
-                        {team.busy.length} busy
-                      </span>
-                    )}
-                    {!hasAvailable && (
-                      <span className="text-xs text-slate-500 bg-slate-100 border border-slate-300 px-2 py-0.5 rounded">
-                        Unavailable
-                      </span>
-                    )}
+                  <div className="flex items-center gap-2 shrink-0">
+                    {isSelected && <span className="inline-flex items-center gap-1 text-xs bg-slate-700 text-white px-2.5 py-1 rounded-full font-bold"><Radio className="w-3 h-3" />Lead</span>}
+                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${isSelected ? 'border-slate-700 bg-slate-700' : 'border-slate-300 bg-white'}`}>
+                      {isSelected && <CheckCircle className="w-3.5 h-3.5 text-white" />}
+                    </div>
                   </div>
                 </button>
               );
             })}
           </div>
-
-          <div className="bg-slate-50 border-t border-slate-200 px-5 py-4 flex gap-2">
-            <button onClick={onClose}
-              className="flex-1 px-4 py-2.5 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded hover:bg-slate-50 transition-colors">
-              Cancel
-            </button>
-            <button
-              onClick={() => setConfirming(true)}
-              disabled={!selectedTeam}
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold bg-slate-800 hover:bg-slate-900 text-white rounded transition-colors disabled:opacity-40"
-            >
-              <Send className="w-3.5 h-3.5" />Next: Confirm Dispatch
-            </button>
-          </div>
+          {!selectedLeadId && (
+            <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded p-2.5 mt-3 flex items-center gap-1.5">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0" />Please select a lead responder to continue.
+            </p>
+          )}
+        </div>
+        <div className="bg-slate-50 border-t border-slate-200 px-5 py-4 flex gap-2">
+          <button onClick={() => setStep(1)} className="flex-1 px-4 py-2.5 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded hover:bg-slate-50 transition-colors">← Back</button>
+          <button onClick={() => setStep(3)} disabled={!selectedLeadId}
+            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold bg-slate-800 hover:bg-slate-900 text-white rounded transition-colors disabled:opacity-40">
+            Next: Confirm Dispatch →
+          </button>
         </div>
       </div>
-    );
-  }
+    </div>
+  );
 
-  // ── Step 2: Confirmation ──
+  // Step 3: Final confirmation
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-lg shadow-2xl max-w-md w-full border border-slate-200 overflow-hidden">
-
         <div className="bg-slate-800 px-6 py-4 flex items-center justify-between">
           <div>
             <h2 className="text-sm font-bold text-white uppercase tracking-widest flex items-center gap-2">
               <AlertTriangle className="w-4 h-4 text-amber-400" />Confirm Dispatch
             </h2>
-            <p className="text-slate-400 text-xs mt-1">Review before sending</p>
+            <p className="text-slate-400 text-xs mt-1">Step 3 of 3 — Review before sending</p>
           </div>
-          <button onClick={() => setConfirming(false)} className="text-slate-400 hover:text-white p-1.5 rounded transition-colors">
-            <X className="w-4 h-4" />
-          </button>
+          <button onClick={() => setStep(2)} className="text-slate-400 hover:text-white p-1.5 rounded"><X className="w-4 h-4" /></button>
         </div>
-
         <div className="p-6 space-y-4">
-          {/* Report Summary */}
           <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
             <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Report</p>
             <p className="text-sm font-bold text-slate-900">{report.title}</p>
             <p className="text-xs text-slate-500 mt-0.5">{report.report_number} · {report.location || 'No location'}</p>
-            <div className="flex items-center gap-2 mt-2">
-              <StatusBadge status={report.status} />
-              <PriorityBadge priority={report.priority} />
-            </div>
+            <div className="flex items-center gap-2 mt-2"><StatusBadge status={report.status} /><PriorityBadge priority={report.priority} /></div>
           </div>
-
-          {/* Team Summary */}
-          <div className={`border-2 rounded-lg p-4 ${selectedTeamData ? 'border-slate-700 bg-slate-50' : 'border-slate-200'}`}>
-            <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Team to Dispatch</p>
+          <div className="border-2 border-slate-700 rounded-lg p-4 bg-slate-50">
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Dispatch Summary</p>
             {selectedTeamData && (
-              <>
-                <div className="flex items-center gap-3 mb-3">
-                  <div className={`w-10 h-10 ${selectedTeamData.header} rounded flex items-center justify-center`}>
-                    <Users className="w-5 h-5 text-white" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold text-slate-900">{selectedTeamData.label}</p>
-                    <p className="text-xs text-slate-500">{selectedTeamData.description}</p>
-                  </div>
+              <div className="flex items-center gap-3 mb-3">
+                <div className={`w-10 h-10 ${selectedTeamData.header} rounded flex items-center justify-center shrink-0`}>
+                  <Users className="w-5 h-5 text-white" />
                 </div>
-                <div className="flex gap-2 flex-wrap">
-                  <span className="text-xs font-semibold text-green-700 bg-green-50 border border-green-300 px-2 py-1 rounded">
-                    {selectedTeamData.available.length} available members
-                  </span>
-                  <span className="text-xs font-semibold text-slate-600 bg-slate-100 border border-slate-200 px-2 py-1 rounded">
-                    {selectedTeamData.members.length} total members
-                  </span>
+                <div>
+                  <p className="text-sm font-bold text-slate-900">{selectedTeamData.label}</p>
+                  <p className="text-xs text-slate-500">{selectedTeamData.available.length} members will be dispatched</p>
                 </div>
-                {selectedTeamData.available.length > 0 && (
-                  <div className="mt-3 pt-3 border-t border-slate-200">
-                    <p className="text-xs text-slate-500 font-semibold mb-2 uppercase tracking-wide">Available members:</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {selectedTeamData.available.map(m => (
-                        <span key={m.id} className="text-xs bg-white border border-slate-300 text-slate-700 px-2 py-0.5 rounded font-medium">
-                          {m.name}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </>
+              </div>
+            )}
+            <div className="mb-3">
+              <p className="text-xs text-slate-500 font-semibold uppercase tracking-wide mb-1.5">All dispatched members:</p>
+              <div className="flex flex-wrap gap-1.5">
+                {selectedTeamData?.available.map(m => (
+                  <span key={m.id} className={`text-xs px-2 py-0.5 rounded font-medium border ${
+                    m.id === selectedLeadId ? 'bg-slate-700 text-white border-slate-700' : 'bg-white text-slate-700 border-slate-300'}`}>
+                    {m.id === selectedLeadId ? '📡 ' : ''}{m.name}{m.id === selectedLeadId ? ' (Lead)' : ''}
+                  </span>
+                ))}
+              </div>
+            </div>
+            {selectedLead && (
+              <div className="bg-blue-50 border border-blue-200 rounded p-3 flex items-center gap-2">
+                <Radio className="w-4 h-4 text-blue-600 shrink-0" />
+                <div>
+                  <p className="text-xs font-bold text-blue-800">Live Tracking: {selectedLead.name}</p>
+                  <p className="text-xs text-blue-600 mt-0.5">This person's GPS will be shown on the map</p>
+                </div>
+              </div>
             )}
           </div>
-
-          {/* Warning */}
           <div className="bg-amber-50 border border-amber-300 rounded-lg p-3 flex items-start gap-2">
-            <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
             <p className="text-xs text-amber-800 font-medium">
-              This will mark the report as <strong>In Progress</strong> and set all available members of this team to <strong>Busy</strong>. This action will be logged.
+              This marks the report as <strong>In Progress</strong> and sets all dispatched members to <strong>Busy</strong>.
             </p>
           </div>
         </div>
-
         <div className="bg-slate-50 border-t border-slate-200 px-6 py-4 flex gap-2">
-          <button onClick={() => setConfirming(false)} disabled={deploying}
-            className="flex-1 px-4 py-2.5 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded hover:bg-slate-50 transition-colors disabled:opacity-50">
-            ← Go Back
-          </button>
+          <button onClick={() => setStep(2)} disabled={deploying} className="flex-1 px-4 py-2.5 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded hover:bg-slate-50 transition-colors disabled:opacity-50">← Go Back</button>
           <button onClick={handleConfirmDeploy} disabled={deploying}
             className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold bg-slate-800 hover:bg-slate-900 text-white rounded transition-colors disabled:opacity-50">
-            {deploying
-              ? <><div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />Dispatching...</>
-              : <><Send className="w-3.5 h-3.5" />Yes, Dispatch Team</>
-            }
+            {deploying ? <><div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />Dispatching...</> : <><Send className="w-3.5 h-3.5" />Yes, Dispatch Team</>}
           </button>
         </div>
       </div>
@@ -670,11 +801,11 @@ function ReportCard({ report, onView, onEdit, onDelete, canEdit, aiInsights, onT
     streetlights:   { icon: Zap,           label: 'Streetlights'   },
     other:          { icon: FileText,      label: 'Other'          },
   };
-  const catCfg     = categoryIcons[report.category] || categoryIcons.other;
-  const CatIcon    = catCfg.icon;
-  const isUrgent   = report.priority === 'urgent';
+  const catCfg       = categoryIcons[report.category] || categoryIcons.other;
+  const CatIcon      = catCfg.icon;
+  const isUrgent     = report.priority === 'urgent';
   const isInProgress = report.status === 'in-progress';
-  const hasFraudAI = !!report.ai_verdict;
+  const hasFraudAI   = !!report.ai_verdict;
   const verdictColor = {
     likely_real: 'bg-green-50 text-green-700 border-green-200',
     genuine:     'bg-green-50 text-green-700 border-green-200',
@@ -686,9 +817,7 @@ function ReportCard({ report, onView, onEdit, onDelete, canEdit, aiInsights, onT
     <div className={`bg-white border rounded-lg overflow-hidden transition-all hover:shadow-md ${isUrgent ? 'border-red-300 shadow-red-100' : 'border-slate-200'}`}>
       {isUrgent && (
         <div className="bg-red-600 px-4 py-1.5 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-white text-xs font-bold uppercase tracking-wider">
-            <Zap className="w-3.5 h-3.5" />Urgent Priority
-          </div>
+          <div className="flex items-center gap-2 text-white text-xs font-bold uppercase tracking-wider"><Zap className="w-3.5 h-3.5" />Urgent Priority</div>
           <Bell className="w-3.5 h-3.5 text-white" />
         </div>
       )}
@@ -709,9 +838,7 @@ function ReportCard({ report, onView, onEdit, onDelete, canEdit, aiInsights, onT
             <p className="text-xs text-slate-500 font-mono">{report.report_number}</p>
             <h3 className="text-sm font-bold text-slate-900 mt-0.5 line-clamp-2 leading-snug">{report.title}</h3>
           </div>
-          <div className="bg-slate-100 p-1.5 rounded flex-shrink-0 ml-2">
-            <CatIcon className="w-4 h-4 text-slate-600" />
-          </div>
+          <div className="bg-slate-100 p-1.5 rounded shrink-0 ml-2"><CatIcon className="w-4 h-4 text-slate-600" /></div>
         </div>
         <div className="flex flex-wrap gap-1.5 mb-3">
           <span className="text-xs font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded capitalize border border-slate-200">{catCfg.label}</span>
@@ -732,7 +859,7 @@ function ReportCard({ report, onView, onEdit, onDelete, canEdit, aiInsights, onT
         )}
         <div className="space-y-1 pt-2 border-t border-slate-100 mb-3">
           <div className="flex items-start gap-1.5 text-xs text-slate-500">
-            <MapPin className="w-3.5 h-3.5 flex-shrink-0 mt-0.5 text-slate-400" />
+            <MapPin className="w-3.5 h-3.5 shrink-0 mt-0.5 text-slate-400" />
             <span className="line-clamp-1">{report.location || 'No location provided'}</span>
           </div>
           <div className="flex items-center gap-1.5 text-xs text-slate-400">
@@ -741,7 +868,7 @@ function ReportCard({ report, onView, onEdit, onDelete, canEdit, aiInsights, onT
           </div>
         </div>
         <div className="flex items-center gap-2 text-xs text-slate-500 pb-3 border-b border-slate-100">
-          <div className="w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center text-slate-600 font-bold text-xs flex-shrink-0">
+          <div className="w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center text-slate-600 font-bold text-xs shrink-0">
             {report.reporter_name?.charAt(0)?.toUpperCase()}
           </div>
           {report.reporter_name}
@@ -752,12 +879,8 @@ function ReportCard({ report, onView, onEdit, onDelete, canEdit, aiInsights, onT
           </button>
           {canEdit && (
             <>
-              <button onClick={() => onEdit(report)} className="p-2 text-slate-500 bg-slate-100 rounded hover:bg-slate-200 transition-colors" title="Edit">
-                <Edit3 className="w-3.5 h-3.5" />
-              </button>
-              <button onClick={() => onDelete(report)} className="p-2 text-red-500 bg-red-50 rounded hover:bg-red-100 transition-colors" title="Delete">
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
+              <button onClick={() => onEdit(report)} className="p-2 text-slate-500 bg-slate-100 rounded hover:bg-slate-200 transition-colors" title="Edit"><Edit3 className="w-3.5 h-3.5" /></button>
+              <button onClick={() => onDelete(report)} className="p-2 text-red-500 bg-red-50 rounded hover:bg-red-100 transition-colors" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
             </>
           )}
         </div>
@@ -770,6 +893,7 @@ function ReportCard({ report, onView, onEdit, onDelete, canEdit, aiInsights, onT
 function ViewReportModal({ report, onClose, onEditStatus, canEdit, onDeployResponder, onRunAssessment, scanning, aiData, onAcceptAI, acceptingAI, onDismissAI }) {
   const [isImageZoomed,  setIsImageZoomed]  = useState(false);
   const [zoomedImageUrl, setZoomedImageUrl] = useState(null);
+
   if (!report) return null;
   const imageUrls = Array.isArray(report.media_urls) ? report.media_urls : [];
   const hasImages = imageUrls.length > 0;
@@ -778,8 +902,6 @@ function ViewReportModal({ report, onClose, onEditStatus, canEdit, onDeployRespo
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-lg shadow-2xl max-w-4xl w-full max-h-[92vh] overflow-y-auto border border-slate-200">
-
-        {/* Header */}
         <div className="sticky top-0 bg-slate-800 px-6 py-4 z-10 rounded-t-lg">
           <div className="flex items-start justify-between">
             <div className="flex-1 min-w-0 pr-4">
@@ -803,9 +925,7 @@ function ViewReportModal({ report, onClose, onEditStatus, canEdit, onDeployRespo
                 )}
               </div>
             </div>
-            <button onClick={onClose} className="text-slate-400 hover:text-white p-2 rounded transition-colors flex-shrink-0">
-              <X className="w-5 h-5" />
-            </button>
+            <button onClick={onClose} className="text-slate-400 hover:text-white p-2 rounded transition-colors shrink-0"><X className="w-5 h-5" /></button>
           </div>
         </div>
 
@@ -821,46 +941,42 @@ function ViewReportModal({ report, onClose, onEditStatus, canEdit, onDeployRespo
           />
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            {/* Reporter */}
             <div className="border border-slate-200 rounded-lg overflow-hidden">
               <div className="bg-slate-50 border-b border-slate-200 px-4 py-2.5">
-                <p className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center gap-2">
-                  <User className="w-3.5 h-3.5" />Reporter Information
-                </p>
+                <p className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center gap-2"><User className="w-3.5 h-3.5" />Reporter Information</p>
               </div>
               <div className="p-4 space-y-3">
                 <div><p className="text-xs text-slate-400 uppercase tracking-wide font-semibold mb-0.5">Full Name</p><p className="text-sm font-semibold text-slate-800">{report.reporter_name}</p></div>
-                <div><p className="text-xs text-slate-400 uppercase tracking-wide font-semibold mb-0.5">Contact Number</p>
-                  <a href={`tel:${report.reporter_phone}`} className="text-sm text-slate-700 hover:text-slate-900 flex items-center gap-1.5"><Phone className="w-3.5 h-3.5 text-slate-400" />{report.reporter_phone || 'N/A'}</a>
+                <div>
+                  <p className="text-xs text-slate-400 uppercase tracking-wide font-semibold mb-0.5">Contact Number</p>
+                  <a href={`tel:${report.reporter_phone}`} className="text-sm text-slate-700 hover:text-slate-900 flex items-center gap-1.5">
+                    <Phone className="w-3.5 h-3.5 text-slate-400" />{report.reporter_phone || 'N/A'}
+                  </a>
                 </div>
-                <div><p className="text-xs text-slate-400 uppercase tracking-wide font-semibold mb-0.5">Email Address</p>
-                  <a href={`mailto:${report.reporter_email}`} className="text-sm text-slate-700 hover:text-slate-900 flex items-center gap-1.5"><Mail className="w-3.5 h-3.5 text-slate-400" />{report.reporter_email}</a>
+                <div>
+                  <p className="text-xs text-slate-400 uppercase tracking-wide font-semibold mb-0.5">Email Address</p>
+                  <a href={`mailto:${report.reporter_email}`} className="text-sm text-slate-700 hover:text-slate-900 flex items-center gap-1.5">
+                    <Mail className="w-3.5 h-3.5 text-slate-400" />{report.reporter_email}
+                  </a>
                 </div>
               </div>
             </div>
-            {/* Incident */}
+
             <div className="border border-slate-200 rounded-lg overflow-hidden">
               <div className="bg-slate-50 border-b border-slate-200 px-4 py-2.5">
-                <p className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center gap-2">
-                  <FileText className="w-3.5 h-3.5" />Incident Details
-                </p>
+                <p className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center gap-2"><FileText className="w-3.5 h-3.5" />Incident Details</p>
               </div>
               <div className="p-4 space-y-3">
                 <div><p className="text-xs text-slate-400 uppercase tracking-wide font-semibold mb-0.5">Classification</p><p className="text-sm font-semibold text-slate-800 capitalize">{report.category}</p></div>
-                <div><p className="text-xs text-slate-400 uppercase tracking-wide font-semibold mb-0.5">Date Filed</p>
-                  <p className="text-sm text-slate-700">{new Date(report.created_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
-                </div>
+                <div><p className="text-xs text-slate-400 uppercase tracking-wide font-semibold mb-0.5">Date Filed</p><p className="text-sm text-slate-700">{new Date(report.created_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p></div>
                 <div><p className="text-xs text-slate-400 uppercase tracking-wide font-semibold mb-0.5">Description</p><p className="text-sm text-slate-700 leading-relaxed">{report.description}</p></div>
               </div>
             </div>
           </div>
 
-          {/* Location */}
           <div className="border border-slate-200 rounded-lg overflow-hidden">
             <div className="bg-slate-50 border-b border-slate-200 px-4 py-2.5">
-              <p className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center gap-2">
-                <MapPin className="w-3.5 h-3.5" />Location Information
-              </p>
+              <p className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center gap-2"><MapPin className="w-3.5 h-3.5" />Location Information</p>
             </div>
             <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
               <div><p className="text-xs text-slate-400 uppercase tracking-wide font-semibold mb-0.5">Address</p><p className="text-sm text-slate-800">{report.location || 'Not provided'}</p></div>
@@ -876,7 +992,6 @@ function ViewReportModal({ report, onClose, onEditStatus, canEdit, onDeployRespo
             </div>
           </div>
 
-          {/* Evidence */}
           {(hasImages || hasVideo) && (
             <div className="border border-slate-200 rounded-lg overflow-hidden">
               <div className="bg-slate-50 border-b border-slate-200 px-4 py-2.5 flex items-center justify-between">
@@ -907,27 +1022,19 @@ function ViewReportModal({ report, onClose, onEditStatus, canEdit, onDeployRespo
             </div>
           )}
 
-          {/* Admin Notes */}
           {(report.assigned_to || report.admin_notes) && (
             <div className="border border-slate-200 rounded-lg overflow-hidden">
               <div className="bg-slate-50 border-b border-slate-200 px-4 py-2.5">
-                <p className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center gap-2">
-                  <MessageSquare className="w-3.5 h-3.5" />Administrative Notes
-                </p>
+                <p className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center gap-2"><MessageSquare className="w-3.5 h-3.5" />Administrative Notes</p>
               </div>
               <div className="p-4 space-y-3">
-                {report.assigned_to && (
-                  <div><p className="text-xs text-slate-400 uppercase tracking-wide font-semibold mb-0.5">Assigned To</p><p className="text-sm font-semibold text-slate-800">{report.assigned_to}</p></div>
-                )}
-                {report.admin_notes && (
-                  <div><p className="text-xs text-slate-400 uppercase tracking-wide font-semibold mb-0.5">Notes</p><p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">{report.admin_notes}</p></div>
-                )}
+                {report.assigned_to && <div><p className="text-xs text-slate-400 uppercase tracking-wide font-semibold mb-0.5">Assigned To</p><p className="text-sm font-semibold text-slate-800">{report.assigned_to}</p></div>}
+                {report.admin_notes && <div><p className="text-xs text-slate-400 uppercase tracking-wide font-semibold mb-0.5">Notes</p><p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">{report.admin_notes}</p></div>}
               </div>
             </div>
           )}
         </div>
 
-        {/* Footer */}
         <div className="sticky bottom-0 bg-slate-50 border-t border-slate-200 px-6 py-4 flex gap-3 flex-wrap rounded-b-lg">
           <button onClick={onClose} className="px-4 py-2 text-sm font-semibold text-slate-700 bg-white border border-slate-300 rounded hover:bg-slate-50 transition-colors">Close</button>
           {canEdit && report.status === 'pending' && (
@@ -945,7 +1052,6 @@ function ViewReportModal({ report, onClose, onEditStatus, canEdit, onDeployRespo
         </div>
       </div>
 
-      {/* Image Zoom */}
       {isImageZoomed && (
         <div className="fixed inset-0 z-[60] bg-black/95 flex items-center justify-center p-4" onClick={() => setIsImageZoomed(false)}>
           <button className="absolute top-4 right-4 text-white/70 hover:text-white bg-white/10 p-2 rounded-full transition-all" onClick={() => setIsImageZoomed(false)}>
@@ -963,10 +1069,11 @@ function EditReportModal({ report, onClose, onSave }) {
   const [formData, setFormData] = useState({
     status:      report.status,
     priority:    report.priority,
-    assigned_to: report.assigned_to  || '',
-    admin_notes: report.admin_notes  || '',
+    assigned_to: report.assigned_to || '',
+    admin_notes: report.admin_notes || '',
   });
   const [saving, setSaving] = useState(false);
+
   const handleSave = async () => {
     setSaving(true);
     await onSave(report.id, formData);
@@ -985,7 +1092,7 @@ function EditReportModal({ report, onClose, onSave }) {
         </div>
         <div className="p-6 space-y-4">
           {[
-            { label: 'Disposition Status',   key: 'status',   options: [['pending','Pending'],['in-progress','In Progress'],['resolved','Resolved'],['rejected','Rejected']] },
+            { label: 'Disposition Status',      key: 'status',   options: [['pending','Pending'],['in-progress','In Progress'],['resolved','Resolved'],['rejected','Rejected']] },
             { label: 'Priority Classification', key: 'priority', options: [['low','Low'],['medium','Medium'],['high','High'],['urgent','Urgent']] },
           ].map(({ label, key, options }) => (
             <div key={key}>
@@ -1021,25 +1128,25 @@ function EditReportModal({ report, onClose, onSave }) {
   );
 }
 
-// ─── Main Component ───────────────────────────────────────────────────────────
+// ─── Main Reports Component ───────────────────────────────────────────────────
 export default function Reports() {
-  const [reports,         setReports]         = useState([]);
-  const [responders,      setResponders]      = useState([]);
-  const [filteredReports, setFilteredReports] = useState([]);
-  const [selectedReport,  setSelectedReport]  = useState(null);
-  const [editingReport,   setEditingReport]   = useState(null);
-  const [searchQuery,     setSearchQuery]     = useState('');
-  const [statusFilter,    setStatusFilter]    = useState('all');
-  const [priorityFilter,  setPriorityFilter]  = useState('all');
-  const [loading,         setLoading]         = useState(true);
-  const [userRole,        setUserRole]        = useState(null);
-  const [deployModalOpen, setDeployModalOpen] = useState(false);
+  const [reports,           setReports]           = useState([]);
+  const [responders,        setResponders]        = useState([]);
+  const [filteredReports,   setFilteredReports]   = useState([]);
+  const [selectedReport,    setSelectedReport]    = useState(null);
+  const [editingReport,     setEditingReport]     = useState(null);
+  const [searchQuery,       setSearchQuery]       = useState('');
+  const [statusFilter,      setStatusFilter]      = useState('all');
+  const [priorityFilter,    setPriorityFilter]    = useState('all');
+  const [loading,           setLoading]           = useState(true);
+  const [userRole,          setUserRole]          = useState(null);
+  const [deployModalOpen,   setDeployModalOpen]   = useState(false);
   const [trackingModalOpen, setTrackingModalOpen] = useState(false);
-  const [trackingReport,  setTrackingReport]  = useState(null);
+  const [trackingReport,    setTrackingReport]    = useState(null);
   const [trackingResponder, setTrackingResponder] = useState(null);
-  const [aiDataMap,       setAiDataMap]       = useState({});
-  const [scanningId,      setScanningId]      = useState(null);
-  const [acceptingAI,     setAcceptingAI]     = useState(false);
+  const [aiDataMap,         setAiDataMap]         = useState({});
+  const [scanningId,        setScanningId]        = useState(null);
+  const [acceptingAI,       setAcceptingAI]       = useState(false);
 
   useEffect(() => { fetchReports(); fetchResponders(); checkUserRole(); }, []);
   useEffect(() => { filterReports(); }, [reports, searchQuery, statusFilter, priorityFilter]);
@@ -1057,8 +1164,7 @@ export default function Reports() {
       const { data, error } = await supabase.from('reports').select('*').order('created_at', { ascending: false });
       if (error) throw error;
       setReports(data);
-    } catch (err) { console.error(err); }
-    finally { setLoading(false); }
+    } catch (err) { console.error(err); } finally { setLoading(false); }
   };
 
   const fetchResponders = async () => {
@@ -1075,7 +1181,7 @@ export default function Reports() {
       r.report_number?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       r.reporter_name?.toLowerCase().includes(searchQuery.toLowerCase())
     );
-    if (statusFilter !== 'all')   f = f.filter(r => r.status === statusFilter);
+    if (statusFilter !== 'all')   f = f.filter(r => r.status   === statusFilter);
     if (priorityFilter !== 'all') f = f.filter(r => r.priority === priorityFilter);
     setFilteredReports(f);
   };
@@ -1083,12 +1189,7 @@ export default function Reports() {
   const handleViewReport = (report) => {
     setSelectedReport(report);
     if (report.ai_verdict && !aiDataMap[report.id]) {
-      setAiDataMap(prev => ({
-        ...prev,
-        [report.id]: {
-          fraud: { verdict: report.ai_verdict, score: report.ai_score, explanation: report.ai_notes },
-        },
-      }));
+      setAiDataMap(prev => ({ ...prev, [report.id]: { fraud: { verdict: report.ai_verdict, score: report.ai_score, explanation: report.ai_notes } } }));
     }
   };
 
@@ -1099,7 +1200,7 @@ export default function Reports() {
         analyzeReportWithAI({ category: report.category, title: report.title, description: report.description, location: report.location }),
         fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/check-report-evidence`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', apikey: import.meta.env.VITE_SUPABASE_ANON_KEY, Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}` },
+          headers: { 'Content-Type': 'application/json', 'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY, 'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}` },
           body: JSON.stringify(report),
         }).then(r => r.json()).catch(() => null),
       ]);
@@ -1120,8 +1221,7 @@ export default function Reports() {
         }));
       }
       await logAuditAction({ action: 'scan', actionType: 'report', description: `AI full assessment on ${report.report_number}`, severity: 'info', targetId: report.id });
-    } catch (err) { console.error('Assessment error:', err); }
-    finally { setScanningId(null); }
+    } catch (err) { console.error('Assessment error:', err); } finally { setScanningId(null); }
   };
 
   const handleAcceptAI = async (reportId) => {
@@ -1131,22 +1231,21 @@ export default function Reports() {
     try {
       const report = reports.find(r => r.id === reportId);
       const notes = [
-        `AI Assessment — ${new Date().toLocaleDateString()}`,
+        `AI Assessment (${new Date().toLocaleDateString()})`,
         `Priority: ${ai.priority?.toUpperCase()}`,
         `Severity: ${ai.severity}/10`,
         `Response: ${ai.responseTime}h`,
-        ai.suggestedTeam ? `Suggested Team: ${getTeamConfig(ai.suggestedTeam).label}` : '',
+        ai.suggestedTeam ? `Suggested Team: ${getTeamConfig(ai.suggestedTeam).label}` : null,
         `Reasoning: ${ai.reasoning}`,
-        ai.suggestedActions?.length ? `Actions: ${ai.suggestedActions.join(', ')}` : '',
-        ai.fraud ? `Evidence: ${ai.fraud.verdict} (${Math.round((ai.fraud.score || 0) * 100)}% confidence)` : '',
+        ai.suggestedActions?.length ? `Actions: ${ai.suggestedActions.join(', ')}` : null,
+        ai.fraud ? `Evidence: ${ai.fraud.verdict} (${Math.round((ai.fraud.score || 0) * 100)}% confidence)` : null,
       ].filter(Boolean).join('\n');
       const { error } = await supabase.from('reports').update({ priority: ai.priority, admin_notes: notes }).eq('id', reportId);
       if (error) throw error;
       await logAuditAction({ action: 'update', actionType: 'report', description: `Accepted AI assessment for ${report?.report_number}`, severity: 'info', targetId: reportId });
       setAiDataMap(prev => { const n = { ...prev }; delete n[reportId]; return n; });
       fetchReports();
-    } catch (err) { console.error('Accept AI error:', err); }
-    finally { setAcceptingAI(false); }
+    } catch (err) { console.error('Accept AI error:', err); } finally { setAcceptingAI(false); }
   };
 
   const handleDismissAI = (reportId) => {
@@ -1175,57 +1274,77 @@ export default function Reports() {
     } catch (err) { console.error(err); }
   };
 
-  // ── Team-based deploy ─────────────────────────────────────────────────────
-  const handleDeploy = async (teamValue, teamData) => {
+  const handleDeploy = async (teamValue, teamData, leadResponderId) => {
     try {
       const availableMembers = teamData.available;
       const memberNames      = availableMembers.map(m => m.name).join(', ');
+      const leadResponder    = availableMembers.find(m => m.id === leadResponderId);
 
-      // Mark all available team members as busy
       if (availableMembers.length > 0) {
-        const ids = availableMembers.map(m => m.id);
-        await supabase.from('responders').update({ status: 'busy' }).in('id', ids);
+        await supabase.from('responders').update({ status: 'busy' }).in('id', availableMembers.map(m => m.id));
       }
 
-      // Update report
-      await supabase.from('reports').update({
-        status:           'in-progress',
-        assigned_to:      `${teamData.label} (${memberNames || 'Team'})`,
-        responder_status: 'assigned',
-      }).eq('id', selectedReport.id);
+      await supabase
+        .from('reports')
+        .update({
+          status:               'in-progress',
+          assigned_to:          `${teamData.label}: ${memberNames}`,
+          assigned_responder_id: leadResponderId,
+          responder_status:     'assigned',
+        })
+        .eq('id', selectedReport.id);
 
-      await logAuditAction({
-        action:      'deploy',
-        actionType:  'responder',
-        description: `Dispatched ${teamData.label} to ${selectedReport.report_number}. Members: ${memberNames || 'none available'}`,
-        severity:    'info',
-        targetId:    selectedReport.id,
-        targetType:  'report',
-        targetName:  selectedReport.title,
-        newValues:   { assigned_to: teamData.label, team: teamValue, members_deployed: availableMembers.length },
-      });
+      try {
+        await logAuditAction({
+          action:      'deploy',
+          actionType:  'responder',
+          description: `Dispatched ${teamData.label} to ${selectedReport.report_number}. Lead: ${leadResponder?.name ?? 'N/A'}. Members: ${memberNames}`,
+          severity:    'warning',
+          targetId:    selectedReport.id,
+          targetType:  'report',
+          targetName:  selectedReport.title,
+          newValues: {
+            assigned_to:     teamData.label,
+            team:            teamValue,
+            lead:            leadResponder?.name,
+            membersDeployed: availableMembers.length,
+          },
+        });
+      } catch (auditErr) {
+        console.error('⚠️ Audit log failed for deploy:', auditErr);
+      }
 
       setDeployModalOpen(false);
       setSelectedReport(null);
       fetchReports();
       fetchResponders();
-    } catch (err) { console.error('Deploy error:', err); }
+    } catch (err) {
+      console.error('Deploy error:', err);
+    }
   };
 
   const handleTrackResponder = async (report) => {
-    if (!report.assigned_to) return;
-    // Find any member from the assigned team that's busy
-    const teamValue = responders.find(r =>
-      report.assigned_to?.toLowerCase().includes(getTeamConfig(r.team || 'bpso').label.toLowerCase())
-    );
-    const responder = responders.find(r => r.status === 'busy' &&
-      report.assigned_to?.includes(r.name)
-    ) || responders.find(r => r.status === 'busy');
-    if (responder) {
-      setTrackingReport(report);
-      setTrackingResponder(responder);
-      setTrackingModalOpen(true);
+    if (!report) return;
+    const leadId = report.assigned_responder_id;
+    if (leadId) {
+      const { data: responder } = await supabase
+        .from('responders').select('*').eq('id', leadId).single();
+      if (responder) {
+        setTrackingReport(report);
+        setTrackingResponder(responder);
+        setTrackingModalOpen(true);
+        return;
+      }
     }
+    const fallback = responders.find(r => r.status === 'busy' && report.assigned_to?.includes(r.name))
+                  || responders.find(r => r.status === 'busy');
+    if (!fallback) {
+      alert('No active responder found for this report. The responder may not have GPS enabled yet.');
+      return;
+    }
+    setTrackingReport(report);
+    setTrackingResponder(fallback);
+    setTrackingModalOpen(true);
   };
 
   const canEdit = userRole === 'admin' || userRole === 'system_administrator' || userRole === 'operator';
@@ -1240,7 +1359,6 @@ export default function Reports() {
 
   return (
     <div className="p-6 space-y-6 min-h-screen bg-slate-50">
-
       {/* Header */}
       <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
@@ -1259,11 +1377,11 @@ export default function Reports() {
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         {[
-          { label: 'Total Filed',  value: stats.total,      icon: FileText,      color: 'text-slate-700'  },
-          { label: 'Pending',      value: stats.pending,    icon: Clock,         color: 'text-amber-600'  },
-          { label: 'In Progress',  value: stats.inProgress, icon: Radio,         color: 'text-blue-600'   },
-          { label: 'Resolved',     value: stats.resolved,   icon: CheckCircle,   color: 'text-green-600'  },
-          { label: 'Urgent',       value: stats.urgent,     icon: AlertTriangle, color: 'text-red-600'    },
+          { label: 'Total Filed',  value: stats.total,      icon: FileText,      color: 'text-slate-700' },
+          { label: 'Pending',      value: stats.pending,    icon: Clock,         color: 'text-amber-600' },
+          { label: 'In Progress',  value: stats.inProgress, icon: Radio,         color: 'text-blue-600'  },
+          { label: 'Resolved',     value: stats.resolved,   icon: CheckCircle,   color: 'text-green-600' },
+          { label: 'Urgent',       value: stats.urgent,     icon: AlertTriangle, color: 'text-red-600'   },
         ].map(({ label, value, icon: Icon, color }) => (
           <div key={label} className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm">
             <div className="flex items-center justify-between">
@@ -1356,7 +1474,7 @@ export default function Reports() {
           aiData={aiDataMap[selectedReport.id] || null}
           onAcceptAI={handleAcceptAI}
           acceptingAI={acceptingAI}
-          onDismissAI={() => handleDismissAI(selectedReport.id)}
+          onDismissAI={() => handleDismissAI(selectedReport?.id)}
         />
       )}
 
@@ -1374,7 +1492,7 @@ export default function Reports() {
           responders={responders}
           onClose={() => setDeployModalOpen(false)}
           onDeploy={handleDeploy}
-          aiSuggestedTeam={aiDataMap[selectedReport.id]?.suggestedTeam}
+          aiSuggestedTeam={aiDataMap[selectedReport.id]?.suggestedTeam || null}
         />
       )}
 
@@ -1382,7 +1500,11 @@ export default function Reports() {
         <TrackResponderModal
           report={trackingReport}
           responder={trackingResponder}
-          onClose={() => { setTrackingModalOpen(false); setTrackingReport(null); setTrackingResponder(null); }}
+          onClose={() => {
+            setTrackingModalOpen(false);
+            setTrackingReport(null);
+            setTrackingResponder(null);
+          }}
         />
       )}
     </div>

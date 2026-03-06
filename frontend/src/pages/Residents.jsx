@@ -3,7 +3,8 @@ import { useState, useEffect } from 'react';
 import {
   Search, Eye, X, ChevronLeft, ChevronRight, AlertTriangle,
   User, Download, RefreshCw, Phone, Mail, MapPin, Calendar,
-  CheckCircle, Shield, Ban, Flag, Clock, Loader2,
+  CheckCircle, Shield, Ban, Flag, Clock, Loader2, FileText,
+  XCircle, ZoomIn, IdCard,
 } from 'lucide-react';
 import { supabase } from '../config/supabase';
 
@@ -18,8 +19,7 @@ function StatusBadge({ status }) {
   const labels = { active: 'Active', flagged: 'Flagged', suspended: 'Suspended' };
   return (
     <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded border text-xs font-bold uppercase tracking-wider ${classes}`}>
-      <Icon className="w-3 h-3" />
-      {labels[status] || status}
+      <Icon className="w-3 h-3" />{labels[status] || status}
     </span>
   );
 }
@@ -38,10 +38,124 @@ function VerifiedBadge({ verified }) {
   );
 }
 
+// ─── ID Verification Badge ────────────────────────────────────────────────────
+function IDVerificationBadge({ status }) {
+  const styles = {
+    unsubmitted: { classes: 'bg-slate-50 text-slate-500 border-slate-300',     label: 'No ID Submitted' },
+    pending:     { classes: 'bg-amber-50 text-amber-700 border-amber-300',     label: 'ID Pending Review' },
+    approved:    { classes: 'bg-green-50 text-green-700 border-green-300',     label: 'ID Approved'     },
+    rejected:    { classes: 'bg-red-50 text-red-700 border-red-300',           label: 'ID Rejected'     },
+  };
+  const { classes, label } = styles[status || 'unsubmitted'];
+  return (
+    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded border text-xs font-bold uppercase tracking-wider ${classes}`}>
+      <IdCard className="w-3 h-3" />{label}
+    </span>
+  );
+}
+
+// ─── Image Lightbox ───────────────────────────────────────────────────────────
+function ImageLightbox({ src, onClose }) {
+  if (!src) return null;
+  return (
+    <div
+      className="fixed inset-0 bg-black/80 z-[3000] flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div className="relative max-w-3xl w-full" onClick={e => e.stopPropagation()}>
+        <button
+          onClick={onClose}
+          className="absolute -top-10 right-0 text-white hover:text-slate-300 p-1"
+        >
+          <X className="w-6 h-6" />
+        </button>
+        <img src={src} alt="ID" className="w-full rounded-lg shadow-2xl object-contain max-h-[80vh]" />
+      </div>
+    </div>
+  );
+}
+
+// ─── Rejection Reason Modal ───────────────────────────────────────────────────
+function RejectionModal({ isOpen, onClose, onConfirm, loading }) {
+  const [reason, setReason] = useState('');
+  const presets = [
+    'ID image is blurry or unreadable',
+    'ID appears to be expired',
+    'ID does not match registered information',
+    'ID type is not accepted',
+    'Photo on ID does not match profile',
+  ];
+
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[3000] flex items-center justify-center p-4">
+      <div className="bg-white rounded-lg shadow-2xl w-full max-w-md border border-slate-200 overflow-hidden">
+        <div className="bg-red-700 px-5 py-4 flex items-center justify-between">
+          <h2 className="text-sm font-bold text-white uppercase tracking-widest flex items-center gap-2">
+            <XCircle className="w-4 h-4" />Reject ID Submission
+          </h2>
+          <button onClick={onClose} className="text-white/70 hover:text-white p-1 rounded">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="p-5 space-y-4">
+          <p className="text-xs text-slate-500 font-semibold uppercase tracking-widest">Quick Reasons</p>
+          <div className="space-y-2">
+            {presets.map(p => (
+              <button
+                key={p}
+                onClick={() => setReason(p)}
+                className={`w-full text-left px-3 py-2 text-xs rounded border transition-all ${
+                  reason === p
+                    ? 'bg-red-50 border-red-400 text-red-800 font-semibold'
+                    : 'bg-white border-slate-200 text-slate-700 hover:border-slate-400'
+                }`}
+              >
+                {p}
+              </button>
+            ))}
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-600 uppercase tracking-widest mb-1.5">
+              Custom Reason
+            </label>
+            <textarea
+              value={reason}
+              onChange={e => setReason(e.target.value)}
+              rows={3}
+              className="w-full px-3 py-2 text-sm border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-red-400 resize-none"
+              placeholder="Enter rejection reason..."
+            />
+          </div>
+        </div>
+        <div className="bg-slate-50 border-t border-slate-200 px-5 py-4 flex gap-2">
+          <button
+            onClick={onClose}
+            className="flex-1 px-4 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded hover:bg-slate-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => onConfirm(reason)}
+            disabled={!reason.trim() || loading}
+            className="flex-1 flex items-center justify-center gap-2 px-4 py-2 text-xs font-bold bg-red-600 hover:bg-red-700 text-white rounded disabled:opacity-50"
+          >
+            {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <XCircle className="w-3.5 h-3.5" />}
+            Confirm Rejection
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── View Resident Modal ──────────────────────────────────────────────────────
 function ViewResidentModal({ resident, onClose, onUpdate }) {
   if (!resident) return null;
-  const [loading, setLoading] = useState(false);
+  const [loading,        setLoading]        = useState(false);
+  const [lightboxSrc,    setLightboxSrc]    = useState(null);
+  const [showRejection,  setShowRejection]  = useState(false);
+  const [activeTab,      setActiveTab]      = useState('profile'); // 'profile' | 'id'
 
   const calculateAge = (dob) => {
     if (!dob) return 'N/A';
@@ -56,12 +170,12 @@ function ViewResidentModal({ resident, onClose, onUpdate }) {
   const accountAge = Math.floor((new Date() - new Date(resident.created_at)) / (1000 * 60 * 60 * 24));
 
   const updateStatus = async (newStatus) => {
-    const confirmMessages = {
+    const msgs = {
       flagged:   'Flag this account for review?',
       suspended: 'Suspend this account? User will lose access to emergency features.',
       active:    'Restore this account to active status?',
     };
-    if (!confirm(confirmMessages[newStatus])) return;
+    if (!confirm(msgs[newStatus])) return;
     setLoading(true);
     try {
       const { error } = await supabase
@@ -69,241 +183,478 @@ function ViewResidentModal({ resident, onClose, onUpdate }) {
         .update({ account_status: newStatus, updated_at: new Date().toISOString() })
         .eq('id', resident.id);
       if (error) throw error;
-      alert(`Account ${newStatus === 'active' ? 'activated' : newStatus} successfully!`);
-      onUpdate();
-      onClose();
-    } catch (err) {
-      console.error(err);
-      alert('Failed to update account status');
-    } finally {
-      setLoading(false);
-    }
+      onUpdate(); onClose();
+    } catch (err) { alert('Failed to update account status'); }
+    finally { setLoading(false); }
   };
 
-  const verifyUser = async () => {
-    if (!confirm('Verify this user? This will add a trust badge to their account.')) return;
+  // ── ID Approval ──────────────────────────────────────────────────────────────
+  const approveID = async () => {
+    if (!confirm('Approve this ID and verify the user?')) return;
     setLoading(true);
     try {
       const { error } = await supabase
         .from('users')
-        .update({ is_verified: true, updated_at: new Date().toISOString() })
+        .update({
+          verification_status: 'approved',
+          is_verified:         true,
+          verified_at:         new Date().toISOString(),
+          rejection_reason:    null,
+          updated_at:          new Date().toISOString(),
+        })
         .eq('id', resident.id);
       if (error) throw error;
-      alert('User verified successfully!');
-      onUpdate();
-      onClose();
-    } catch (err) {
-      console.error(err);
-      alert('Failed to verify user');
-    } finally {
-      setLoading(false);
-    }
+      onUpdate(); onClose();
+    } catch (err) { alert('Failed to approve ID'); }
+    finally { setLoading(false); }
   };
 
+  const rejectID = async (reason) => {
+    setLoading(true);
+    try {
+      const { error } = await supabase
+        .from('users')
+        .update({
+          verification_status: 'rejected',
+          is_verified:         false,
+          rejection_reason:    reason,
+          updated_at:          new Date().toISOString(),
+        })
+        .eq('id', resident.id);
+      if (error) throw error;
+      setShowRejection(false);
+      onUpdate(); onClose();
+    } catch (err) { alert('Failed to reject ID'); }
+    finally { setLoading(false); }
+  };
+
+  const verificationStatus = resident.verification_status || 'unsubmitted';
+  const hasPendingID = verificationStatus === 'pending';
+
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
-      <div className="bg-white rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto border border-slate-200">
+    <>
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
+        <div className="bg-white rounded-lg shadow-2xl w-full max-w-2xl max-h-[92vh] overflow-y-auto border border-slate-200">
 
-        {/* Header */}
-        <div className="bg-slate-800 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
-          <div>
-            <h2 className="text-sm font-bold text-white uppercase tracking-widest">Resident Profile</h2>
-            <p className="text-xs text-slate-400 mt-0.5 font-mono">{resident.id?.slice(0, 8)}...</p>
-          </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white p-1.5 rounded transition-colors">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        <div className="p-6 space-y-4">
-
-          {/* Badges row */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <StatusBadge status={resident.account_status || 'active'} />
-            <VerifiedBadge verified={resident.is_verified} />
-            <span className="flex items-center gap-1.5 text-xs text-slate-500 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded">
-              <Calendar className="w-3.5 h-3.5" />
-              Registered: {new Date(resident.created_at).toLocaleDateString()}
-            </span>
-            <span className="flex items-center gap-1.5 text-xs text-slate-500 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded">
-              <Clock className="w-3.5 h-3.5" />
-              {accountAge} days old
-            </span>
+          {/* Header */}
+          <div className="bg-slate-800 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+            <div>
+              <h2 className="text-sm font-bold text-white uppercase tracking-widest flex items-center gap-2">
+                {hasPendingID && (
+                  <span className="inline-flex items-center gap-1 bg-amber-500 text-white text-xs px-2 py-0.5 rounded font-bold animate-pulse">
+                    ID REVIEW NEEDED
+                  </span>
+                )}
+                Resident Profile
+              </h2>
+              <p className="text-xs text-slate-400 mt-0.5 font-mono">{resident.id?.slice(0, 8)}...</p>
+            </div>
+            <button onClick={onClose} className="text-slate-400 hover:text-white p-1.5 rounded transition-colors">
+              <X className="w-4 h-4" />
+            </button>
           </div>
 
-          {/* Alert banners */}
-          {!resident.is_verified && resident.account_status === 'active' && (
-            <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-lg p-3.5">
-              <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="text-xs font-bold text-amber-900 uppercase tracking-wide">Unverified Account — Full Access</p>
-                <p className="text-xs text-amber-700 mt-0.5">This user has full emergency reporting access. Verify identity to add trust badge.</p>
-              </div>
-            </div>
-          )}
-          {resident.account_status === 'flagged' && (
-            <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-lg p-3.5">
-              <Flag className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="text-xs font-bold text-amber-900 uppercase tracking-wide">Account Flagged for Review</p>
-                <p className="text-xs text-amber-700 mt-0.5">Review recent activity before taking action.</p>
-              </div>
-            </div>
-          )}
-          {resident.account_status === 'suspended' && (
-            <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-lg p-3.5">
-              <Ban className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="text-xs font-bold text-red-900 uppercase tracking-wide">Account Suspended</p>
-                <p className="text-xs text-red-700 mt-0.5">This user cannot access emergency features.</p>
-              </div>
-            </div>
-          )}
+          {/* Tab Bar */}
+          <div className="flex gap-1 bg-slate-100 border-b border-slate-200 px-4 py-2">
+            {[
+              { id: 'profile', label: 'Profile Info', icon: User     },
+              { id: 'id',      label: 'ID Verification',
+                icon: IdCard,
+                badge: hasPendingID ? 'PENDING' : null },
+            ].map(({ id, label, icon: Icon, badge }) => (
+              <button
+                key={id}
+                onClick={() => setActiveTab(id)}
+                className={`flex items-center gap-2 px-4 py-2 rounded text-xs font-bold uppercase tracking-wider transition-all ${
+                  activeTab === id
+                    ? 'bg-slate-800 text-white shadow-sm'
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5" />
+                {label}
+                {badge && (
+                  <span className="bg-amber-500 text-white text-xs px-1.5 py-0.5 rounded font-bold">
+                    {badge}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
 
-          {/* Personal Information */}
-          <div className="border border-slate-200 rounded-lg overflow-hidden">
-            <div className="bg-slate-50 border-b border-slate-200 px-4 py-2.5 flex items-center gap-2">
-              <User className="w-3.5 h-3.5 text-slate-500" />
-              <p className="text-xs font-bold text-slate-600 uppercase tracking-widest">Personal Information</p>
-            </div>
-            <div className="p-4 grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Full Name</p>
-                <p className="text-sm font-semibold text-slate-900">
-                  {resident.full_name || `${resident.first_name || ''} ${resident.last_name || ''}`.trim() || 'N/A'}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Date of Birth</p>
-                <p className="text-sm font-semibold text-slate-900">
-                  {resident.date_of_birth ? new Date(resident.date_of_birth).toLocaleDateString() : 'N/A'}
-                </p>
-                {resident.date_of_birth && (
-                  <p className="text-xs text-slate-400 mt-0.5">{calculateAge(resident.date_of_birth)} years old</p>
+          <div className="p-6 space-y-4">
+
+            {/* ── Profile Tab ─────────────────────────────────────────────── */}
+            {activeTab === 'profile' && (
+              <>
+                {/* Badges row */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <StatusBadge status={resident.account_status || 'active'} />
+                  <VerifiedBadge verified={resident.is_verified} />
+                  <IDVerificationBadge status={verificationStatus} />
+                  <span className="flex items-center gap-1.5 text-xs text-slate-500 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded">
+                    <Calendar className="w-3.5 h-3.5" />
+                    Registered: {new Date(resident.created_at).toLocaleDateString()}
+                  </span>
+                  <span className="flex items-center gap-1.5 text-xs text-slate-500 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded">
+                    <Clock className="w-3.5 h-3.5" />{accountAge} days old
+                  </span>
+                </div>
+
+                {/* Alert banners */}
+                {hasPendingID && (
+                  <div className="flex items-start gap-3 bg-amber-50 border border-amber-300 rounded-lg p-3.5">
+                    <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <p className="text-xs font-bold text-amber-900 uppercase tracking-wide">ID Verification Pending</p>
+                      <p className="text-xs text-amber-700 mt-0.5">This user submitted their ID for review. Go to the <strong>ID Verification</strong> tab to approve or reject.</p>
+                    </div>
+                    <button
+                      onClick={() => setActiveTab('id')}
+                      className="text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded flex-shrink-0"
+                    >
+                      Review Now
+                    </button>
+                  </div>
+                )}
+                {verificationStatus === 'rejected' && (
+                  <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-lg p-3.5">
+                    <XCircle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-xs font-bold text-red-900 uppercase tracking-wide">ID Previously Rejected</p>
+                      <p className="text-xs text-red-700 mt-0.5">Reason: {resident.rejection_reason || 'No reason provided'}</p>
+                    </div>
+                  </div>
+                )}
+                {resident.account_status === 'flagged' && (
+                  <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-lg p-3.5">
+                    <Flag className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-xs font-bold text-amber-900 uppercase tracking-wide">Account Flagged for Review</p>
+                      <p className="text-xs text-amber-700 mt-0.5">Review recent activity before taking action.</p>
+                    </div>
+                  </div>
+                )}
+                {resident.account_status === 'suspended' && (
+                  <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-lg p-3.5">
+                    <Ban className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-xs font-bold text-red-900 uppercase tracking-wide">Account Suspended</p>
+                      <p className="text-xs text-red-700 mt-0.5">This user cannot access emergency features.</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Personal Information */}
+                <div className="border border-slate-200 rounded-lg overflow-hidden">
+                  <div className="bg-slate-50 border-b border-slate-200 px-4 py-2.5 flex items-center gap-2">
+                    <User className="w-3.5 h-3.5 text-slate-500" />
+                    <p className="text-xs font-bold text-slate-600 uppercase tracking-widest">Personal Information</p>
+                  </div>
+                  <div className="p-4 grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Full Name</p>
+                      <p className="text-sm font-semibold text-slate-900">
+                        {resident.full_name || `${resident.first_name || ''} ${resident.last_name || ''}`.trim() || 'N/A'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Date of Birth</p>
+                      <p className="text-sm font-semibold text-slate-900">
+                        {resident.date_of_birth ? new Date(resident.date_of_birth).toLocaleDateString() : 'N/A'}
+                      </p>
+                      {resident.date_of_birth && (
+                        <p className="text-xs text-slate-400 mt-0.5">{calculateAge(resident.date_of_birth)} years old</p>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Gender</p>
+                      <p className="text-sm font-semibold text-slate-900">{resident.gender || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Account Type</p>
+                      <p className="text-sm font-semibold text-slate-900">{resident.account_type || 'resident'}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Contact Information */}
+                <div className="border border-slate-200 rounded-lg overflow-hidden">
+                  <div className="bg-slate-50 border-b border-slate-200 px-4 py-2.5 flex items-center gap-2">
+                    <Phone className="w-3.5 h-3.5 text-slate-500" />
+                    <p className="text-xs font-bold text-slate-600 uppercase tracking-widest">Contact Information</p>
+                  </div>
+                  <div className="p-4 grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Email</p>
+                      <a href={`mailto:${resident.email}`} className="text-sm text-blue-600 hover:underline flex items-center gap-1.5 font-medium">
+                        <Mail className="w-3.5 h-3.5" />{resident.email || 'N/A'}
+                      </a>
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Phone</p>
+                      <a href={`tel:${resident.phone}`} className="text-sm text-blue-600 hover:underline flex items-center gap-1.5 font-medium">
+                        <Phone className="w-3.5 h-3.5" />{resident.phone || 'N/A'}
+                      </a>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Address Information */}
+                <div className="border border-slate-200 rounded-lg overflow-hidden">
+                  <div className="bg-slate-50 border-b border-slate-200 px-4 py-2.5 flex items-center gap-2">
+                    <MapPin className="w-3.5 h-3.5 text-slate-500" />
+                    <p className="text-xs font-bold text-slate-600 uppercase tracking-widest">Address Information</p>
+                  </div>
+                  <div className="p-4 space-y-3">
+                    <div>
+                      <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Full Address</p>
+                      <p className="text-sm text-slate-800">{resident.address || 'N/A'}</p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Purok</p>
+                        <p className="text-sm font-semibold text-slate-900">{resident.purok || 'N/A'}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Barangay</p>
+                        <p className="text-sm font-semibold text-slate-900">{resident.barangay || 'N/A'}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* ── ID Verification Tab ──────────────────────────────────────── */}
+            {activeTab === 'id' && (
+              <div className="space-y-4">
+
+                {/* Status summary */}
+                <div className={`rounded-lg p-4 border-2 flex items-start gap-3 ${
+                  verificationStatus === 'pending'     ? 'bg-amber-50 border-amber-300' :
+                  verificationStatus === 'approved'    ? 'bg-green-50 border-green-300' :
+                  verificationStatus === 'rejected'    ? 'bg-red-50 border-red-300'     :
+                  'bg-slate-50 border-slate-200'
+                }`}>
+                  {verificationStatus === 'pending'  && <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />}
+                  {verificationStatus === 'approved' && <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />}
+                  {verificationStatus === 'rejected' && <XCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />}
+                  {verificationStatus === 'unsubmitted' && <IdCard className="w-5 h-5 text-slate-400 flex-shrink-0 mt-0.5" />}
+                  <div>
+                    <p className="text-sm font-bold text-slate-900 uppercase tracking-wide">
+                      {verificationStatus === 'pending'     && 'Awaiting Admin Review'}
+                      {verificationStatus === 'approved'    && 'ID Approved — User Verified'}
+                      {verificationStatus === 'rejected'    && 'ID Rejected'}
+                      {verificationStatus === 'unsubmitted' && 'No ID Submitted Yet'}
+                    </p>
+                    {verificationStatus === 'approved' && resident.verified_at && (
+                      <p className="text-xs text-green-700 mt-0.5">
+                        Approved on {new Date(resident.verified_at).toLocaleString()}
+                      </p>
+                    )}
+                    {verificationStatus === 'rejected' && resident.rejection_reason && (
+                      <p className="text-xs text-red-700 mt-0.5">Reason: {resident.rejection_reason}</p>
+                    )}
+                    {verificationStatus === 'unsubmitted' && (
+                      <p className="text-xs text-slate-500 mt-0.5">The user has not submitted any ID for verification.</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* ID Type */}
+                {resident.id_type && (
+                  <div className="border border-slate-200 rounded-lg overflow-hidden">
+                    <div className="bg-slate-50 border-b border-slate-200 px-4 py-2.5">
+                      <p className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center gap-2">
+                        <FileText className="w-3.5 h-3.5" />Submitted ID Type
+                      </p>
+                    </div>
+                    <div className="p-4">
+                      <p className="text-sm font-semibold text-slate-900">{resident.id_type}</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* ID Images */}
+                {(resident.id_front_url || resident.id_back_url) ? (
+                  <div className="border border-slate-200 rounded-lg overflow-hidden">
+                    <div className="bg-slate-50 border-b border-slate-200 px-4 py-2.5">
+                      <p className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center gap-2">
+                        <IdCard className="w-3.5 h-3.5" />ID Photos
+                      </p>
+                    </div>
+                    <div className="p-4 grid grid-cols-2 gap-4">
+                      {/* Front */}
+                      <div>
+                        <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Front Side</p>
+                        {resident.id_front_url ? (
+                          <div className="relative group cursor-pointer rounded-lg overflow-hidden border border-slate-200 bg-slate-50"
+                            onClick={() => setLightboxSrc(resident.id_front_url)}>
+                            <img
+                              src={resident.id_front_url}
+                              alt="ID Front"
+                              className="w-full h-36 object-cover group-hover:opacity-80 transition-opacity"
+                            />
+                            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/30">
+                              <ZoomIn className="w-6 h-6 text-white" />
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="h-36 rounded-lg border border-dashed border-slate-300 bg-slate-50 flex items-center justify-center">
+                            <p className="text-xs text-slate-400">Not provided</p>
+                          </div>
+                        )}
+                      </div>
+                      {/* Back */}
+                      <div>
+                        <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Back Side</p>
+                        {resident.id_back_url ? (
+                          <div className="relative group cursor-pointer rounded-lg overflow-hidden border border-slate-200 bg-slate-50"
+                            onClick={() => setLightboxSrc(resident.id_back_url)}>
+                            <img
+                              src={resident.id_back_url}
+                              alt="ID Back"
+                              className="w-full h-36 object-cover group-hover:opacity-80 transition-opacity"
+                            />
+                            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/30">
+                              <ZoomIn className="w-6 h-6 text-white" />
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="h-36 rounded-lg border border-dashed border-slate-300 bg-slate-50 flex items-center justify-center">
+                            <p className="text-xs text-slate-400">Not provided</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ) : verificationStatus !== 'unsubmitted' ? (
+                  <div className="text-center py-8 border border-dashed border-slate-300 rounded-lg">
+                    <IdCard className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                    <p className="text-sm font-semibold text-slate-500">No ID images uploaded</p>
+                  </div>
+                ) : null}
+
+                {/* Checklist — shown when pending */}
+                {hasPendingID && (
+                  <div className="border border-amber-200 rounded-lg overflow-hidden">
+                    <div className="bg-amber-50 border-b border-amber-200 px-4 py-2.5">
+                      <p className="text-xs font-bold text-amber-800 uppercase tracking-widest">Review Checklist</p>
+                    </div>
+                    <div className="p-4 space-y-2">
+                      {[
+                        'Name on ID matches registered full name',
+                        'ID photo is clear and unobstructed',
+                        'ID is not expired',
+                        'ID type is a valid government-issued document',
+                        'Face photo on ID is visible and matches profile',
+                      ].map((item, i) => (
+                        <label key={i} className="flex items-center gap-2.5 cursor-pointer group">
+                          <input type="checkbox" className="w-3.5 h-3.5 accent-slate-700" />
+                          <span className="text-xs text-slate-700">{item}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
                 )}
               </div>
-              <div>
-                <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Gender</p>
-                <p className="text-sm font-semibold text-slate-900">{resident.gender || 'N/A'}</p>
-              </div>
-              <div>
-                <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Account Type</p>
-                <p className="text-sm font-semibold text-slate-900">{resident.account_type || 'resident'}</p>
-              </div>
-            </div>
+            )}
           </div>
 
-          {/* Contact Information */}
-          <div className="border border-slate-200 rounded-lg overflow-hidden">
-            <div className="bg-slate-50 border-b border-slate-200 px-4 py-2.5 flex items-center gap-2">
-              <Phone className="w-3.5 h-3.5 text-slate-500" />
-              <p className="text-xs font-bold text-slate-600 uppercase tracking-widest">Contact Information</p>
-            </div>
-            <div className="p-4 grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Email</p>
-                <a href={`mailto:${resident.email}`} className="text-sm text-blue-600 hover:underline flex items-center gap-1.5 font-medium">
-                  <Mail className="w-3.5 h-3.5" />{resident.email || 'N/A'}
-                </a>
-              </div>
-              <div>
-                <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Phone</p>
-                <a href={`tel:${resident.phone}`} className="text-sm text-blue-600 hover:underline flex items-center gap-1.5 font-medium">
-                  <Phone className="w-3.5 h-3.5" />{resident.phone || 'N/A'}
-                </a>
-              </div>
-            </div>
-          </div>
+          {/* Footer Actions */}
+          <div className="sticky bottom-0 bg-white border-t border-slate-200 px-6 py-4 flex gap-2 flex-wrap">
+            <button
+              onClick={onClose}
+              disabled={loading}
+              className="px-4 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded hover:bg-slate-50 transition-colors"
+            >
+              Close
+            </button>
 
-          {/* Address Information */}
-          <div className="border border-slate-200 rounded-lg overflow-hidden">
-            <div className="bg-slate-50 border-b border-slate-200 px-4 py-2.5 flex items-center gap-2">
-              <MapPin className="w-3.5 h-3.5 text-slate-500" />
-              <p className="text-xs font-bold text-slate-600 uppercase tracking-widest">Address Information</p>
-            </div>
-            <div className="p-4 space-y-3">
-              <div>
-                <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Full Address</p>
-                <p className="text-sm text-slate-800">{resident.address || 'N/A'}</p>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Purok</p>
-                  <p className="text-sm font-semibold text-slate-900">{resident.purok || 'N/A'}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Barangay</p>
-                  <p className="text-sm font-semibold text-slate-900">{resident.barangay || 'N/A'}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+            {/* ID Review Actions — only on ID tab when pending */}
+            {activeTab === 'id' && hasPendingID && (
+              <>
+                <button
+                  onClick={() => setShowRejection(true)}
+                  disabled={loading}
+                  className="flex items-center gap-2 px-4 py-2 text-xs font-bold bg-red-600 hover:bg-red-700 text-white rounded transition-colors disabled:opacity-50"
+                >
+                  <XCircle className="w-3.5 h-3.5" />Reject ID
+                </button>
+                <button
+                  onClick={approveID}
+                  disabled={loading}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 text-xs font-bold bg-green-700 hover:bg-green-800 text-white rounded transition-colors disabled:opacity-50"
+                >
+                  {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle className="w-3.5 h-3.5" />}
+                  Approve ID & Verify User
+                </button>
+              </>
+            )}
 
-        {/* Footer Actions */}
-        <div className="sticky bottom-0 bg-white border-t border-slate-200 px-6 py-4 flex gap-2 flex-wrap">
-          <button
-            onClick={onClose}
-            disabled={loading}
-            className="px-4 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded hover:bg-slate-50 transition-colors"
-          >
-            Close
-          </button>
-          {!resident.is_verified && resident.account_status !== 'suspended' && (
-            <button
-              onClick={verifyUser}
-              disabled={loading}
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-2 text-xs font-bold bg-slate-800 hover:bg-slate-900 text-white rounded transition-colors disabled:opacity-50"
-            >
-              {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Shield className="w-3.5 h-3.5" />}
-              Verify Identity
-            </button>
-          )}
-          {resident.account_status === 'active' && (
-            <button
-              onClick={() => updateStatus('flagged')}
-              disabled={loading}
-              className="flex items-center gap-2 px-4 py-2 text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white rounded transition-colors disabled:opacity-50"
-            >
-              <Flag className="w-3.5 h-3.5" />Flag Account
-            </button>
-          )}
-          {(resident.account_status === 'active' || resident.account_status === 'flagged') && (
-            <button
-              onClick={() => updateStatus('suspended')}
-              disabled={loading}
-              className="flex items-center gap-2 px-4 py-2 text-xs font-bold bg-red-600 hover:bg-red-700 text-white rounded transition-colors disabled:opacity-50"
-            >
-              <Ban className="w-3.5 h-3.5" />Suspend
-            </button>
-          )}
-          {(resident.account_status === 'suspended' || resident.account_status === 'flagged') && (
-            <button
-              onClick={() => updateStatus('active')}
-              disabled={loading}
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-2 text-xs font-bold bg-green-600 hover:bg-green-700 text-white rounded transition-colors disabled:opacity-50"
-            >
-              <CheckCircle className="w-3.5 h-3.5" />Restore Account
-            </button>
-          )}
+            {/* Profile tab account management actions */}
+            {activeTab === 'profile' && (
+              <>
+                {resident.account_status === 'active' && (
+                  <button
+                    onClick={() => updateStatus('flagged')}
+                    disabled={loading}
+                    className="flex items-center gap-2 px-4 py-2 text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white rounded transition-colors disabled:opacity-50"
+                  >
+                    <Flag className="w-3.5 h-3.5" />Flag Account
+                  </button>
+                )}
+                {(resident.account_status === 'active' || resident.account_status === 'flagged') && (
+                  <button
+                    onClick={() => updateStatus('suspended')}
+                    disabled={loading}
+                    className="flex items-center gap-2 px-4 py-2 text-xs font-bold bg-red-600 hover:bg-red-700 text-white rounded transition-colors disabled:opacity-50"
+                  >
+                    <Ban className="w-3.5 h-3.5" />Suspend
+                  </button>
+                )}
+                {(resident.account_status === 'suspended' || resident.account_status === 'flagged') && (
+                  <button
+                    onClick={() => updateStatus('active')}
+                    disabled={loading}
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2 text-xs font-bold bg-green-600 hover:bg-green-700 text-white rounded transition-colors disabled:opacity-50"
+                  >
+                    <CheckCircle className="w-3.5 h-3.5" />Restore Account
+                  </button>
+                )}
+              </>
+            )}
+          </div>
         </div>
       </div>
-    </div>
+
+      <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
+      <RejectionModal
+        isOpen={showRejection}
+        onClose={() => setShowRejection(false)}
+        onConfirm={rejectID}
+        loading={loading}
+      />
+    </>
   );
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function Residents() {
-  const [residents, setResidents]       = useState([]);
-  const [loading, setLoading]           = useState(true);
+  const [residents,        setResidents]        = useState([]);
+  const [loading,          setLoading]          = useState(true);
   const [selectedResident, setSelectedResident] = useState(null);
-  const [viewModalOpen, setViewModalOpen] = useState(false);
-  const [searchTerm, setSearchTerm]     = useState('');
-  const [purokFilter, setPurokFilter]   = useState('All');
-  const [statusFilter, setStatusFilter] = useState('All');
-  const [currentPage, setCurrentPage]   = useState(1);
-  const [totalPages, setTotalPages]     = useState(1);
-  const [stats, setStats] = useState({ total: 0, active: 0, flagged: 0, verified: 0 });
+  const [viewModalOpen,    setViewModalOpen]    = useState(false);
+  const [searchTerm,       setSearchTerm]       = useState('');
+  const [purokFilter,      setPurokFilter]      = useState('All');
+  const [statusFilter,     setStatusFilter]     = useState('All');
+  const [verifFilter,      setVerifFilter]      = useState('All');
+  const [currentPage,      setCurrentPage]      = useState(1);
+  const [totalPages,       setTotalPages]       = useState(1);
+  const [stats, setStats] = useState({
+    total: 0, active: 0, flagged: 0, verified: 0, pendingID: 0,
+  });
   const itemsPerPage = 10;
 
   const fetchResidents = async () => {
@@ -315,9 +666,10 @@ export default function Residents() {
         .eq('account_type', 'resident')
         .order('created_at', { ascending: false });
 
-      if (searchTerm) query = query.or(`full_name.ilike.%${searchTerm}%,first_name.ilike.%${searchTerm}%,last_name.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%`);
-      if (purokFilter !== 'All')  query = query.eq('purok', purokFilter);
-      if (statusFilter !== 'All') query = query.eq('account_status', statusFilter);
+      if (searchTerm)              query = query.or(`full_name.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%`);
+      if (purokFilter  !== 'All')  query = query.eq('purok', purokFilter);
+      if (statusFilter !== 'All')  query = query.eq('account_status', statusFilter);
+      if (verifFilter  !== 'All')  query = query.eq('verification_status', verifFilter);
 
       const from = (currentPage - 1) * itemsPerPage;
       query = query.range(from, from + itemsPerPage - 1);
@@ -328,109 +680,120 @@ export default function Residents() {
       setTotalPages(Math.ceil((count || 0) / itemsPerPage));
     } catch (err) {
       console.error(err);
-      alert('Failed to load residents');
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => { fetchResidents(); }, [searchTerm, purokFilter, statusFilter, currentPage]);
+  useEffect(() => { fetchResidents(); }, [searchTerm, purokFilter, statusFilter, verifFilter, currentPage]);
 
   useEffect(() => {
     const fetchStats = async () => {
       try {
         const { data } = await supabase
           .from('users')
-          .select('account_status, is_verified')
+          .select('account_status, is_verified, verification_status')
           .eq('account_type', 'resident');
         if (data) {
           setStats({
-            total:    data.length,
-            active:   data.filter(r => r.account_status === 'active').length,
-            flagged:  data.filter(r => r.account_status === 'flagged').length,
-            verified: data.filter(r => r.is_verified).length,
+            total:     data.length,
+            active:    data.filter(r => r.account_status === 'active').length,
+            flagged:   data.filter(r => r.account_status === 'flagged').length,
+            verified:  data.filter(r => r.is_verified).length,
+            pendingID: data.filter(r => r.verification_status === 'pending').length,
           });
         }
-      } catch (err) {
-        console.error(err);
-      }
+      } catch (err) { console.error(err); }
     };
     fetchStats();
   }, [residents]);
 
   const exportToCSV = () => {
-    const headers = ['ID','Name','Email','Phone','Address','Purok','Status','Verified','Registered'];
+    const headers = ['ID', 'Name', 'Email', 'Phone', 'Address', 'Purok', 'Status', 'Verified', 'ID Status', 'Registered'];
     const csvData = residents.map(r => [
-      r.id, r.full_name || `${r.first_name || ''} ${r.last_name || ''}`,
-      r.email, r.phone || '', r.address || '', r.purok || '',
+      r.id, r.full_name || '', r.email, r.phone || '', r.address || '', r.purok || '',
       r.account_status || 'active', r.is_verified ? 'Yes' : 'No',
+      r.verification_status || 'unsubmitted',
       new Date(r.created_at).toLocaleDateString(),
     ]);
     const csv  = [headers, ...csvData].map(row => row.join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url  = window.URL.createObjectURL(blob);
     const a    = document.createElement('a');
-    a.href = url;
-    a.download = `residents_${new Date().toISOString().split('T')[0]}.csv`;
+    a.href = url; a.download = `residents_${new Date().toISOString().split('T')[0]}.csv`;
     a.click();
   };
 
   const clearFilters = () => {
-    setSearchTerm(''); setPurokFilter('All'); setStatusFilter('All'); setCurrentPage(1);
+    setSearchTerm(''); setPurokFilter('All'); setStatusFilter('All');
+    setVerifFilter('All'); setCurrentPage(1);
   };
 
   return (
     <div className="p-6 space-y-6 min-h-screen bg-slate-50">
 
-      {/* ── Header ── */}
+      {/* Header */}
       <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
           <div className="flex items-center gap-2 text-xs text-slate-500 mb-1 uppercase tracking-widest font-semibold">
             <User className="w-3.5 h-3.5" />Residents
           </div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Residents Directory</h1>
-          <p className="text-sm text-slate-500 mt-0.5">Monitor registered residents and verify identities</p>
+          <p className="text-sm text-slate-500 mt-0.5">Monitor registered residents and verify ID submissions</p>
         </div>
         <div className="flex gap-2">
-          <button
-            onClick={fetchResidents}
-            disabled={loading}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-slate-700 bg-white border border-slate-300 rounded hover:bg-slate-50 transition-colors shadow-sm disabled:opacity-50"
-          >
+          <button onClick={fetchResidents} disabled={loading}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-slate-700 bg-white border border-slate-300 rounded hover:bg-slate-50 transition-colors shadow-sm disabled:opacity-50">
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />Refresh
           </button>
-          <button
-            onClick={exportToCSV}
-            disabled={residents.length === 0}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-bold bg-slate-800 hover:bg-slate-900 text-white rounded transition-colors shadow-sm disabled:opacity-50"
-          >
+          <button onClick={exportToCSV} disabled={residents.length === 0}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-bold bg-slate-800 hover:bg-slate-900 text-white rounded transition-colors shadow-sm disabled:opacity-50">
             <Download className="w-4 h-4" />Export CSV
           </button>
         </div>
       </div>
 
-      {/* ── Stats ── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      {/* Stats — includes pending ID alert */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         {[
-          { label: 'Total Residents',    value: stats.total,    color: 'text-slate-700' },
-          { label: 'Active Accounts',    value: stats.active,   color: 'text-green-600' },
-          { label: 'Flagged for Review', value: stats.flagged,  color: 'text-amber-600' },
-          { label: 'Verified Residents', value: stats.verified, color: 'text-blue-600'  },
-        ].map(({ label, value, color }) => (
-          <div key={label} className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm">
+          { label: 'Total Residents',    value: stats.total,     color: 'text-slate-700' },
+          { label: 'Active Accounts',    value: stats.active,    color: 'text-green-600' },
+          { label: 'Flagged',            value: stats.flagged,   color: 'text-amber-600' },
+          { label: 'Verified',           value: stats.verified,  color: 'text-blue-600'  },
+          { label: 'Pending ID Review',  value: stats.pendingID, color: stats.pendingID > 0 ? 'text-amber-600' : 'text-slate-400',
+            highlight: stats.pendingID > 0 },
+        ].map(({ label, value, color, highlight }) => (
+          <div key={label} className={`bg-white border rounded-lg p-4 shadow-sm ${highlight ? 'border-amber-400 ring-1 ring-amber-300' : 'border-slate-200'}`}>
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest">{label}</p>
             <p className={`text-2xl font-bold mt-1 ${color}`}>{value}</p>
           </div>
         ))}
       </div>
 
-      {/* ── Filters ── */}
+      {/* Pending ID Banner */}
+      {stats.pendingID > 0 && (
+        <div className="bg-amber-50 border border-amber-300 rounded-lg px-5 py-3.5 flex items-center gap-3">
+          <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0" />
+          <p className="text-sm font-semibold text-amber-900 flex-1">
+            {stats.pendingID} resident{stats.pendingID > 1 ? 's have' : ' has'} submitted ID for verification and{' '}
+            {stats.pendingID > 1 ? 'are' : 'is'} waiting for your review.
+          </p>
+          <button
+            onClick={() => { setVerifFilter('pending'); setCurrentPage(1); }}
+            className="text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded flex-shrink-0"
+          >
+            View Pending
+          </button>
+        </div>
+      )}
+
+      {/* Filters */}
       <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
         <div className="bg-slate-50 border-b border-slate-200 px-5 py-3 flex items-center gap-2">
           <Search className="w-3.5 h-3.5 text-slate-500" />
           <p className="text-xs font-bold text-slate-600 uppercase tracking-widest">Filters</p>
         </div>
-        <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
+        <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-3">
           <div className="lg:col-span-2 relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <input
@@ -444,11 +807,9 @@ export default function Residents() {
           <select value={purokFilter} onChange={e => setPurokFilter(e.target.value)}
             className="px-3 py-2.5 border border-slate-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-slate-400">
             <option value="All">All Purok</option>
-            <option value="Purok 1">Purok 1</option>
-            <option value="Purok 2">Purok 2</option>
-            <option value="Purok 3">Purok 3</option>
-            <option value="Purok 4">Purok 4</option>
-            <option value="Purok 5">Purok 5</option>
+            {['Purok 1','Purok 2','Purok 3','Purok 4','Purok 5'].map(p => (
+              <option key={p} value={p}>{p}</option>
+            ))}
           </select>
           <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
             className="px-3 py-2.5 border border-slate-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-slate-400">
@@ -457,6 +818,14 @@ export default function Residents() {
             <option value="flagged">Flagged</option>
             <option value="suspended">Suspended</option>
           </select>
+          <select value={verifFilter} onChange={e => setVerifFilter(e.target.value)}
+            className="px-3 py-2.5 border border-slate-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-slate-400">
+            <option value="All">All ID Status</option>
+            <option value="pending">Pending Review</option>
+            <option value="approved">Approved</option>
+            <option value="rejected">Rejected</option>
+            <option value="unsubmitted">Not Submitted</option>
+          </select>
           <button onClick={clearFilters}
             className="flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded transition-colors">
             <RefreshCw className="w-4 h-4" />Clear
@@ -464,7 +833,7 @@ export default function Residents() {
         </div>
       </div>
 
-      {/* ── Table ── */}
+      {/* Table */}
       <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
         <div className="bg-slate-50 border-b border-slate-200 px-5 py-3 flex items-center justify-between">
           <p className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center gap-2">
@@ -479,9 +848,7 @@ export default function Residents() {
           </div>
         ) : residents.length === 0 ? (
           <div className="text-center py-16">
-            <div className="w-12 h-12 bg-slate-100 border border-slate-200 rounded flex items-center justify-center mx-auto mb-3">
-              <User className="w-6 h-6 text-slate-400" />
-            </div>
+            <User className="w-10 h-10 text-slate-300 mx-auto mb-3" />
             <p className="text-sm font-semibold text-slate-600">No residents found</p>
             <p className="text-xs text-slate-400 mt-1">Try adjusting your filters</p>
           </div>
@@ -491,22 +858,21 @@ export default function Residents() {
               <table className="w-full">
                 <thead className="border-b border-slate-200">
                   <tr>
-                    {['Name', 'Contact', 'Address', 'Registered', 'Status', ''].map(h => (
-                      <th key={h} className="px-5 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-widest bg-slate-50">
-                        {h}
-                      </th>
+                    {['Name', 'Contact', 'Address', 'Registered', 'Status', 'ID Review', ''].map(h => (
+                      <th key={h} className="px-5 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-widest bg-slate-50">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {residents.map((resident) => {
-                    const fullName = resident.full_name || `${resident.first_name || ''} ${resident.last_name || ''}`.trim() || 'Unknown';
+                  {residents.map(resident => {
+                    const fullName = resident.full_name || 'Unknown';
                     const initials = fullName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
+                    const isPending = resident.verification_status === 'pending';
                     return (
-                      <tr key={resident.id} className="hover:bg-slate-50 transition-colors">
+                      <tr key={resident.id} className={`transition-colors ${isPending ? 'bg-amber-50/40 hover:bg-amber-50' : 'hover:bg-slate-50'}`}>
                         <td className="px-5 py-4 whitespace-nowrap">
                           <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 bg-slate-700 rounded flex items-center justify-center text-white font-bold text-xs flex-shrink-0">
+                            <div className={`w-9 h-9 rounded flex items-center justify-center text-white font-bold text-xs flex-shrink-0 ${isPending ? 'bg-amber-600' : 'bg-slate-700'}`}>
                               {initials}
                             </div>
                             <div>
@@ -544,11 +910,19 @@ export default function Residents() {
                           </div>
                         </td>
                         <td className="px-5 py-4 whitespace-nowrap">
+                          <IDVerificationBadge status={resident.verification_status} />
+                        </td>
+                        <td className="px-5 py-4 whitespace-nowrap">
                           <button
                             onClick={() => { setSelectedResident(resident); setViewModalOpen(true); }}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded border text-xs font-semibold bg-white border-slate-300 text-slate-600 hover:bg-slate-50 transition-colors"
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded border text-xs font-semibold transition-colors ${
+                              isPending
+                                ? 'bg-amber-500 border-amber-500 text-white hover:bg-amber-600'
+                                : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'
+                            }`}
                           >
-                            <Eye className="w-3.5 h-3.5" />View
+                            <Eye className="w-3.5 h-3.5" />
+                            {isPending ? 'Review ID' : 'View'}
                           </button>
                         </td>
                       </tr>
