@@ -6,7 +6,7 @@ import {
   Heart, MessageSquare, HelpCircle, BarChart3, Search,
   ChevronRight, ChevronDown, Camera, AlertCircle, CheckCircle,
   Clock, Trash2, Shield, UserCog, Ambulance, Flame, AlertTriangle,
-  MapPin, ExternalLink,
+  MapPin, ExternalLink, ClipboardList,
 } from 'lucide-react';
 import { supabase } from '../config/supabase';
 import { logAuditAction } from '../utils/auditLogger';
@@ -86,7 +86,6 @@ function EmergencyToast({ emergency, onDismiss, onView }) {
   const cfg  = EMERGENCY_TYPE_CONFIG[emergency?.type] || EMERGENCY_TYPE_CONFIG.Accident;
   const Icon = cfg.icon;
 
-  // Auto-dismiss after 12 s
   useEffect(() => {
     const t = setTimeout(handleDismiss, 12000);
     return () => clearTimeout(t);
@@ -99,8 +98,6 @@ function EmergencyToast({ emergency, onDismiss, onView }) {
 
   return (
     <div className={`w-[360px] bg-white rounded-xl shadow-2xl border ${cfg.border} ring-2 ${cfg.ring} overflow-hidden ${exiting ? 'toast-exit' : 'toast-enter'}`}>
-
-      {/* Header */}
       <div className={`${cfg.bg} px-4 py-3 flex items-center justify-between`}>
         <div className="flex items-center gap-2.5">
           <div className="w-7 h-7 bg-white/20 rounded-full flex items-center justify-center">
@@ -116,7 +113,6 @@ function EmergencyToast({ emergency, onDismiss, onView }) {
         </button>
       </div>
 
-      {/* Body */}
       <div className="px-4 py-3 space-y-1.5">
         <p className="text-sm text-slate-800 font-semibold leading-snug line-clamp-2">
           {emergency.description || 'Emergency reported — immediate attention required.'}
@@ -134,7 +130,6 @@ function EmergencyToast({ emergency, onDismiss, onView }) {
         </p>
       </div>
 
-      {/* Actions */}
       <div className="px-4 pb-3 flex gap-2">
         <button
           onClick={() => { onView(emergency); handleDismiss(); }}
@@ -150,7 +145,6 @@ function EmergencyToast({ emergency, onDismiss, onView }) {
         </button>
       </div>
 
-      {/* Shrinking countdown bar */}
       <div className="h-1 bg-slate-100">
         <div
           className={`h-full ${cfg.bg} opacity-80`}
@@ -327,7 +321,6 @@ export default function AdminLayout() {
   const [unreadCount, setUnreadCount]                       = useState(0);
   const [urgentEmergenciesCount, setUrgentEmergenciesCount] = useState(0);
 
-  // ── Emergency Toast State ──────────────────────────────────────────────────
   const [emergencyToasts, setEmergencyToasts] = useState([]);
   const seenEmergencyIds                      = useRef(new Set());
   const isFirstEmergencyLoad                  = useRef(true);
@@ -337,7 +330,6 @@ export default function AdminLayout() {
 
   const isSysAdmin = userRole === 'system_administrator';
 
-  // ── Inject styles ──────────────────────────────────────────────────────────
   useEffect(() => {
     const styleTag = document.createElement('style');
     styleTag.id = 'admin-scrollbar-styles';
@@ -350,7 +342,6 @@ export default function AdminLayout() {
 
   useEffect(() => { getCurrentUser(); }, []);
 
-  // ── Seed existing emergency IDs so page-load doesn't spam ─────────────────
   useEffect(() => {
     const seedExistingEmergencies = async () => {
       const { data } = await supabase
@@ -362,49 +353,30 @@ export default function AdminLayout() {
       isFirstEmergencyLoad.current = false;
     };
     seedExistingEmergencies();
-
-    // Request browser notification permission on mount
     requestNotifPermission();
   }, []);
 
-  // ── Emergency Realtime Listener ────────────────────────────────────────────
   useEffect(() => {
     const channel = supabase
       .channel('emergency-live-notifier')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'emergencies' },
-        (payload) => {
-          const emergency = payload.new;
-          if (isFirstEmergencyLoad.current)          return;
-          if (seenEmergencyIds.current.has(emergency.id)) return;
-
-          seenEmergencyIds.current.add(emergency.id);
-
-          // 1. Audio beeps
-          playAlertSound();
-
-          // 2. OS-level browser push notification
-          showPushNotification(emergency);
-
-          // 3. In-app toast (max 4 stacked)
-          setEmergencyToasts(prev => [emergency, ...prev].slice(0, 4));
-
-          // 4. Bump the urgent count badge in sidebar
-          fetchUrgentEmergencies();
-        }
-      )
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'emergencies' }, (payload) => {
+        const emergency = payload.new;
+        if (isFirstEmergencyLoad.current)              return;
+        if (seenEmergencyIds.current.has(emergency.id)) return;
+        seenEmergencyIds.current.add(emergency.id);
+        playAlertSound();
+        showPushNotification(emergency);
+        setEmergencyToasts(prev => [emergency, ...prev].slice(0, 4));
+        fetchUrgentEmergencies();
+      })
       .subscribe();
-
     return () => supabase.removeChannel(channel);
   }, []);
 
-  // ── Dismiss a toast by ID ──────────────────────────────────────────────────
   const dismissToast = useCallback((id) => {
     setEmergencyToasts(prev => prev.filter(e => e.id !== id));
   }, []);
 
-  // ── Navigate to emergency page from toast ─────────────────────────────────
   const viewEmergencyFromToast = useCallback((emergency) => {
     navigate(`/emergency?emergencyId=${emergency.id}`);
   }, [navigate]);
@@ -517,17 +489,19 @@ export default function AdminLayout() {
       setEmergencyDropdownOpen(true);
   }, [location.pathname]);
 
+  // ── ✅ Services added between Medical and Residents ────────────────────────
   const ALL_NAV_ITEMS = [
-    { icon: Home,          label: 'Dashboard',    path: '/dashboard',          description: 'Overview'         },
-    { icon: FileText,      label: 'Reports',       path: '/reports',            description: 'User reports',     hasDropdown: true, submenu: [{ icon: Camera, label: 'Evidence', path: '/evidence', description: 'Completion photos' }] },
-    { icon: Bell,          label: 'Emergency',     path: '/emergency',          description: 'Active alerts',    badge: urgentEmergenciesCount, urgent: urgentEmergenciesCount > 0, hasDropdown: true, submenu: [{ icon: Camera, label: 'Evidence', path: '/emergency-evidence', description: 'Completion photos' }] },
-    { icon: Heart,         label: 'Medical',       path: '/medical',            description: 'Health requests'  },
-    { icon: Users,         label: 'Residents',     path: '/residents',          description: 'Manage users',     sysAdminOnly: true },
-    { icon: MessageSquare, label: 'Announcements', path: '/announcements',      description: 'Community posts'  },
-    { icon: BarChart3,     label: 'Analytics',     path: '/analytics',          description: 'Insights'         },
-    { icon: Shield,        label: 'Audit Logs',    path: '/audit-logs',         description: 'Track actions',    sysAdminOnly: true },
-    { icon: UserCog,       label: 'Admin Users',   path: '/admin-users',        description: 'Manage admins',    sysAdminOnly: true },
-    { icon: Settings,      label: 'Settings',      path: '/settings',           description: 'Configure'        },
+    { icon: Home,          label: 'Dashboard',    path: '/dashboard',          description: 'Overview'          },
+    { icon: FileText,      label: 'Reports',      path: '/reports',            description: 'User reports',      hasDropdown: true, submenu: [{ icon: Camera, label: 'Evidence', path: '/evidence', description: 'Completion photos' }] },
+    { icon: Bell,          label: 'Emergency',    path: '/emergency',          description: 'Active alerts',     badge: urgentEmergenciesCount, urgent: urgentEmergenciesCount > 0, hasDropdown: true, submenu: [{ icon: Camera, label: 'Evidence', path: '/emergency-evidence', description: 'Completion photos' }] },
+    { icon: Heart,         label: 'Medical',      path: '/medical',            description: 'Health requests'   },
+    { icon: ClipboardList, label: 'Services',     path: '/services',           description: 'Document requests' },
+    { icon: Users,         label: 'Residents',    path: '/residents',          description: 'Manage users',      sysAdminOnly: true },
+    { icon: MessageSquare, label: 'Announcements',path: '/announcements',      description: 'Community posts'   },
+    { icon: BarChart3,     label: 'Analytics',    path: '/analytics',          description: 'Insights'          },
+    { icon: Shield,        label: 'Audit Logs',   path: '/audit-logs',         description: 'Track actions',     sysAdminOnly: true },
+    { icon: UserCog,       label: 'Admin Users',  path: '/admin-users',        description: 'Manage admins',     sysAdminOnly: true },
+    { icon: Settings,      label: 'Settings',     path: '/settings',           description: 'Configure'         },
   ];
 
   const navItems = ALL_NAV_ITEMS.filter(item => !item.sysAdminOnly || isSysAdmin);
@@ -805,7 +779,7 @@ export default function AdminLayout() {
         </footer>
       </div>
 
-      {/* ── Emergency Toast Stack (fixed top-right, above everything) ── */}
+      {/* ── Emergency Toast Stack ── */}
       <div className="fixed top-4 right-4 z-[9999] flex flex-col gap-3 pointer-events-none">
         {emergencyToasts.map((emergency) => (
           <div key={emergency.id} className="pointer-events-auto">

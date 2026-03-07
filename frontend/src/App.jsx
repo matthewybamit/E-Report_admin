@@ -16,6 +16,7 @@ import EmergencyEvidence from './pages/EmergencyEvidence';
 import AuditLogs from './pages/AuditLogs';
 import AdminManagement from './pages/AdminManagement';
 import Analytics from './pages/Analytics';
+import Services from './pages/Services';  
 // Layout Component
 import AdminLayout from './components/AdminLayout';
 
@@ -47,6 +48,8 @@ function App() {
           <Route path="audit-logs" element={<AuditLogs />} />
           <Route path="admin-users" element={<AdminManagement />} />
           <Route path="analytics" element={<Analytics />} />
+          <Route path="services" element={<Services />} />
+          
         </Route>
 
         {/* Catch all - redirect to dashboard */}

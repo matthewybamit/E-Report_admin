@@ -1193,36 +1193,82 @@ export default function Reports() {
     }
   };
 
-  const handleRunAssessment = async (report) => {
-    setScanningId(report.id);
-    try {
-      const [aiResult, fraudResult] = await Promise.all([
-        analyzeReportWithAI({ category: report.category, title: report.title, description: report.description, location: report.location }),
-        fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/check-report-evidence`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY, 'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}` },
-          body: JSON.stringify(report),
-        }).then(r => r.json()).catch(() => null),
-      ]);
-      const merged = { ...aiResult, fraud: fraudResult || null };
-      setAiDataMap(prev => ({ ...prev, [report.id]: merged }));
-      setReports(prev => prev.map(r => r.id === report.id ? {
-        ...r,
-        ai_verdict: fraudResult?.verdict ?? r.ai_verdict,
-        ai_score:   fraudResult?.score   ?? r.ai_score,
-        ai_notes:   fraudResult?.explanation ?? r.ai_notes,
-      } : r));
-      if (selectedReport?.id === report.id) {
-        setSelectedReport(prev => ({
-          ...prev,
-          ai_verdict: fraudResult?.verdict ?? prev.ai_verdict,
-          ai_score:   fraudResult?.score   ?? prev.ai_score,
-          ai_notes:   fraudResult?.explanation ?? prev.ai_notes,
-        }));
-      }
-      await logAuditAction({ action: 'scan', actionType: 'report', description: `AI full assessment on ${report.report_number}`, severity: 'info', targetId: report.id });
-    } catch (err) { console.error('Assessment error:', err); } finally { setScanningId(null); }
-  };
+ const handleRunAssessment = async (report) => {
+  setScanningId(report.id);
+  try {
+    // ✅ Get real session token for Edge Function auth
+    const { data: { session } } = await supabase.auth.getSession();
+
+    const [aiResult, fraudResult] = await Promise.all([
+      analyzeReportWithAI({
+        category:    report.category,
+        title:       report.title,
+        description: report.description,
+        location:    report.location,
+      }),
+      fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/check-report-evidence`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey':        import.meta.env.VITE_SUPABASE_ANON_KEY,
+          // ✅ Use real session token, not anon key
+          'Authorization': `Bearer ${session?.access_token ?? import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+        // ✅ FIXED: wrap report in { report } — Edge Function expects this shape
+        body: JSON.stringify({ report }),
+      })
+        .then(async (res) => {
+          const text = await res.text();
+          console.log('Fraud raw response:', text);
+          try {
+            return JSON.parse(text);
+          } catch {
+            console.error('Fraud JSON parse failed:', text);
+            return null;
+          }
+        })
+        .catch((err) => {
+          console.error('Fraud fetch error:', err);
+          return null;
+        }),
+    ]);
+
+    console.log('AI result:', aiResult);
+    console.log('Fraud result:', fraudResult);
+
+    const merged = { ...aiResult, fraud: fraudResult || null };
+    setAiDataMap(prev => ({ ...prev, [report.id]: merged }));
+
+    setReports(prev => prev.map(r => r.id === report.id ? {
+      ...r,
+      ai_verdict: fraudResult?.verdict      ?? r.ai_verdict,
+      ai_score:   fraudResult?.score        ?? r.ai_score,
+      ai_notes:   fraudResult?.explanation  ?? r.ai_notes,
+    } : r));
+
+    if (selectedReport?.id === report.id) {
+      setSelectedReport(prev => ({
+        ...prev,
+        ai_verdict: fraudResult?.verdict      ?? prev.ai_verdict,
+        ai_score:   fraudResult?.score        ?? prev.ai_score,
+        ai_notes:   fraudResult?.explanation  ?? prev.ai_notes,
+      }));
+    }
+
+    await logAuditAction({
+      action:      'scan',
+      actionType:  'report',
+      description: `AI full assessment on ${report.report_number}`,
+      severity:    'info',
+      targetId:    report.id,
+    });
+
+  } catch (err) {
+    console.error('Assessment error:', err);
+  } finally {
+    setScanningId(null);
+  }
+};
 
   const handleAcceptAI = async (reportId) => {
     const ai = aiDataMap[reportId];
