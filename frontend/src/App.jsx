@@ -16,7 +16,9 @@ import EmergencyEvidence from './pages/EmergencyEvidence';
 import AuditLogs from './pages/AuditLogs';
 import AdminManagement from './pages/AdminManagement';
 import Analytics from './pages/Analytics';
-import Services from './pages/Services';  
+import Services from './pages/Services';
+import Verify from './pages/Verify'; // ← PUBLIC: no auth required
+
 // Layout Component
 import AdminLayout from './components/AdminLayout';
 
@@ -24,10 +26,11 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Public Routes */}
+        {/* ── Fully public routes — NO ProtectedRoute wrapper ── */}
         <Route path="/login" element={<Login />} />
+        <Route path="/verify/:id" element={<Verify />} /> {/* QR scan target */}
 
-        {/* Protected Routes */}
+        {/* ── Protected admin routes ── */}
         <Route
           path="/"
           element={
@@ -37,22 +40,21 @@ function App() {
           }
         >
           <Route index element={<Navigate to="/dashboard" replace />} />
-          <Route path="dashboard" element={<Dashboard />} />
-          <Route path="reports" element={<Reports />} />
-          <Route path="evidence" element={<Evidence />} />
-          <Route path="emergency" element={<Emergency />} />
+          <Route path="dashboard"          element={<Dashboard />} />
+          <Route path="reports"            element={<Reports />} />
+          <Route path="evidence"           element={<Evidence />} />
+          <Route path="emergency"          element={<Emergency />} />
           <Route path="emergency-evidence" element={<EmergencyEvidence />} />
-          <Route path="medical" element={<Medical />} />
-          <Route path="residents" element={<Residents />} />
-          <Route path="announcements" element={<Announcements />} />
-          <Route path="audit-logs" element={<AuditLogs />} />
-          <Route path="admin-users" element={<AdminManagement />} />
-          <Route path="analytics" element={<Analytics />} />
-          <Route path="services" element={<Services />} />
-          
+          <Route path="medical"            element={<Medical />} />
+          <Route path="residents"          element={<Residents />} />
+          <Route path="announcements"      element={<Announcements />} />
+          <Route path="audit-logs"         element={<AuditLogs />} />
+          <Route path="admin-users"        element={<AdminManagement />} />
+          <Route path="analytics"          element={<Analytics />} />
+          <Route path="services"           element={<Services />} />
         </Route>
 
-        {/* Catch all - redirect to dashboard */}
+        {/* Catch-all → dashboard (requires auth, so unauthed users land on login) */}
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
 
@@ -60,10 +62,7 @@ function App() {
         position="top-right"
         toastOptions={{
           duration: 3000,
-          style: {
-            background: '#363636',
-            color: '#fff',
-          },
+          style: { background: '#363636', color: '#fff' },
         }}
       />
     </BrowserRouter>
