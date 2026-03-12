@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 
 // ─── Team Definitions ─────────────────────────────────────────────────────────
-const RESPONSE_TEAMS = [
+const RESPONSE_TEAMS = [  
   { value: 'bpso',     label: 'BPSO Team',             description: 'Barangay Public Safety Officers',        header: 'bg-blue-700',   color: 'bg-blue-50 text-blue-700 border-blue-300'     },
   { value: 'disaster', label: 'Disaster Response Team', description: 'Emergency disaster operations',           header: 'bg-orange-700', color: 'bg-orange-50 text-orange-700 border-orange-300' },
   { value: 'bhert',    label: 'BHERT',                  description: 'Barangay Health Emergency Response Team', header: 'bg-green-700',  color: 'bg-green-50 text-green-700 border-green-300'   },
