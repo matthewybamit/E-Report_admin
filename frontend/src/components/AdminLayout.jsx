@@ -693,7 +693,7 @@ export default function AdminLayout() {
     { icon: Home,          label: 'Dashboard',    path: '/dashboard',     description: 'Overview'          },
     { icon: FileText,      label: 'Reports',      path: '/reports',       description: 'User reports',     hasDropdown: true, submenu: [{ icon: Camera, label: 'Evidence', path: '/evidence', description: 'Completion photos' }] },
     { icon: Bell,          label: 'Emergency',    path: '/emergency',     description: 'Active alerts',    badge: urgentEmergenciesCount, urgent: urgentEmergenciesCount > 0, hasDropdown: true, submenu: [{ icon: Camera, label: 'Evidence', path: '/emergency-evidence', description: 'Completion photos' }] },
-    { icon: Heart,         label: 'Medical',      path: '/medical',       description: 'Health requests'  },
+    // { icon: Heart,         label: 'Medical',      path: '/medical',       description: 'Health requests'  },
     { icon: ClipboardList, label: 'Services',     path: '/services',      description: 'Document requests'},
     { icon: Users,         label: 'Residents',    path: '/residents',     description: 'Manage users',    sysAdminOnly: true },
     { icon: MessageSquare, label: 'Announcements',path: '/announcements', description: 'Community posts'  },

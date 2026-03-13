@@ -3,10 +3,6 @@
 // Generates official Barangay Salvacion certificates as .docx files.
 // Header layout exactly matches the official letterhead:
 //   [ Left Seal Image ] | [ Center Text Block ] | [ Right Seal Image ]
-//
-// Usage:
-//   const images = await loadHeaderImages();  // { left, right }  (data URLs)
-//   await generateCertificate(request, images);
 // ─────────────────────────────────────────────────────────────────────────────
 import {
   AlignmentType,
@@ -15,6 +11,7 @@ import {
   ImageRun,
   Packer,
   Paragraph,
+  ShadingType,
   Table,
   TableCell,
   TableRow,
@@ -33,40 +30,42 @@ const CAMBRIA = "Cambria";
 const TIMES   = "Times New Roman";
 
 // ── Colors ────────────────────────────────────────────────────────────────────
-const BLUE_DARK = "1A3A6B";   // BARANGAY SALVACION header text
-const BLACK     = "000000";
-const RED_CERT  = "CC0000";   // placeholder values shown in red on the templates
-const LINK_BLUE = "1155CC";   // email link color
+const BLUE_DARK  = "1A3A6B";   // BARANGAY SALVACION header text
+const BLACK      = "000000";
+const RED_CERT   = "CC0000";   // placeholder values shown in red
+const LINK_BLUE  = "1155CC";   // email link color
+const NAVY       = "1A3A8F";   // accent borders / permit headings
+const LIGHT_BLUE = "EEF2FF";   // highlight box fill
 
 // ── Unit helpers ──────────────────────────────────────────────────────────────
-const twip = (pt) => Math.round(pt * 20);   // points to twips
-const hp   = (pt) => Math.round(pt * 2);    // points to half-points (font size unit)
+const twip = (pt) => Math.round(pt * 20);
+const hp   = (pt) => Math.round(pt * 2);
 
-// ── Table border helpers ──────────────────────────────────────────────────────
+// ── Border helpers ────────────────────────────────────────────────────────────
 const NO_BORDER  = { style: BorderStyle.NONE, size: 0, color: "FFFFFF" };
 const NO_BORDERS = {
   top: NO_BORDER, bottom: NO_BORDER,
   left: NO_BORDER, right: NO_BORDER,
   insideH: NO_BORDER, insideV: NO_BORDER,
 };
+const THIN_NAVY = { style: BorderStyle.SINGLE, size: 6,  color: NAVY };
+const MED_NAVY  = { style: BorderStyle.SINGLE, size: 12, color: NAVY };
+const LIGHT_GREY = { style: BorderStyle.SINGLE, size: 4, color: "D1D5DB" };
 
-// ── Page setup — US Letter, ~0.75in L/R, ~0.625in T/B margins ────────────────
+// ── Page setup ────────────────────────────────────────────────────────────────
 const PAGE = {
   size:   { width: twip(612), height: twip(792) },
   margin: { top: twip(45), right: twip(54), bottom: twip(45), left: twip(54) },
 };
+const PW = twip(504); // printable width in twips
 
-// Printable width in twips (504pt = 10080 twips)
-const PW = twip(504);
-
-// ── Convert data URL to Uint8Array for ImageRun ───────────────────────────────
-// docx ImageRun expects raw binary, not a data URL string.
+// ── Data URL → Uint8Array ─────────────────────────────────────────────────────
 function dataUrlToUint8Array(dataUrl) {
   if (!dataUrl) return null;
   try {
     const base64 = dataUrl.includes(",") ? dataUrl.split(",")[1] : dataUrl;
-    const binary = atob(base64);
-    const bytes  = new Uint8Array(binary.length);
+    const binary  = atob(base64);
+    const bytes   = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
     return bytes;
   } catch {
@@ -74,7 +73,7 @@ function dataUrlToUint8Array(dataUrl) {
   }
 }
 
-// ── Shared text run helpers ───────────────────────────────────────────────────
+// ── Text run helpers ──────────────────────────────────────────────────────────
 const run = (text, opts = {}) =>
   new TextRun({ text, font: CAMBRIA, size: hp(10), color: BLACK, ...opts });
 
@@ -93,18 +92,11 @@ const rule = () =>
 
 // ─────────────────────────────────────────────────────────────────────────────
 // OFFICIAL LETTERHEAD HEADER
-// Exact layout from screenshots:
-//   Col 1: Left seal image  (Quezon City)
-//   Col 2: Center text block
-//   Col 3: Right seal image (Barangay Salvacion)
-// Followed by a horizontal rule separator.
 // ─────────────────────────────────────────────────────────────────────────────
 function buildHeader(leftDataUrl, rightDataUrl) {
-  // Column widths in twips
-  const IMG_COL_W = 1400;               // ~0.97 inch each side
-  const TXT_COL_W = PW - IMG_COL_W * 2; // remaining center
+  const IMG_COL_W = 1400;
+  const TXT_COL_W = PW - IMG_COL_W * 2;
 
-  // Image cell builder
   const imgCell = (dataUrl, align) => {
     const bytes    = dataUrlToUint8Array(dataUrl);
     const children = bytes
@@ -114,17 +106,10 @@ function buildHeader(leftDataUrl, rightDataUrl) {
       width:         { size: IMG_COL_W, type: WidthType.DXA },
       verticalAlign: VerticalAlign.CENTER,
       borders:       NO_BORDERS,
-      children: [
-        new Paragraph({
-          alignment: align,
-          spacing: { before: 0, after: 0 },
-          children,
-        }),
-      ],
+      children: [new Paragraph({ alignment: align, spacing: { before: 0, after: 0 }, children })],
     });
   };
 
-  // Center text cell — mirrors the official letterhead exactly
   const centerCell = new TableCell({
     width:         { size: TXT_COL_W, type: WidthType.DXA },
     verticalAlign: VerticalAlign.CENTER,
@@ -133,52 +118,37 @@ function buildHeader(leftDataUrl, rightDataUrl) {
       new Paragraph({
         alignment: AlignmentType.CENTER,
         spacing: { before: 0, after: 0 },
-        children: [
-          new TextRun({ text: "REPUBLIC OF THE PHILIPPINES", bold: true, size: hp(9), font: TIMES, color: BLACK }),
-        ],
+        children: [new TextRun({ text: "REPUBLIC OF THE PHILIPPINES", bold: true, size: hp(9), font: TIMES, color: BLACK })],
       }),
       new Paragraph({
         alignment: AlignmentType.CENTER,
         spacing: { before: 0, after: 0 },
-        children: [
-          new TextRun({ text: "Area 6, District 1, Quezon City", size: hp(9), font: CAMBRIA, color: BLACK }),
-        ],
+        children: [new TextRun({ text: "Area 6, District 1, Quezon City", size: hp(9), font: CAMBRIA, color: BLACK })],
       }),
-      // ── "BARANGAY SALVACION" — large, bold, dark blue, dominant ──
       new Paragraph({
         alignment: AlignmentType.CENTER,
         spacing: { before: twip(1), after: 0 },
-        children: [
-          new TextRun({ text: "BARANGAY SALVACION", bold: true, size: hp(24), font: TIMES, color: BLUE_DARK }),
-        ],
+        children: [new TextRun({ text: "BARANGAY SALVACION", bold: true, size: hp(24), font: TIMES, color: BLUE_DARK })],
       }),
       new Paragraph({
         alignment: AlignmentType.CENTER,
         spacing: { before: 0, after: 0 },
-        children: [
-          new TextRun({ text: "Tanggapan ng Punong Barangay", bold: true, size: hp(12), font: CAMBRIA, color: BLACK }),
-        ],
+        children: [new TextRun({ text: "Tanggapan ng Punong Barangay", bold: true, size: hp(12), font: CAMBRIA, color: BLACK })],
       }),
       new Paragraph({
         alignment: AlignmentType.CENTER,
         spacing: { before: 0, after: 0 },
-        children: [
-          new TextRun({ text: "74 Bulusan Street, La Loma, Quezon City", size: hp(9), font: CAMBRIA, color: BLACK }),
-        ],
+        children: [new TextRun({ text: "74 Bulusan Street, La Loma, Quezon City", size: hp(9), font: CAMBRIA, color: BLACK })],
       }),
       new Paragraph({
         alignment: AlignmentType.CENTER,
         spacing: { before: 0, after: 0 },
-        children: [
-          new TextRun({ text: "Barangaysalvacion1114@gmail.com", size: hp(9), font: CAMBRIA, color: LINK_BLUE }),
-        ],
+        children: [new TextRun({ text: "Barangaysalvacion1114@gmail.com", size: hp(9), font: CAMBRIA, color: LINK_BLUE })],
       }),
       new Paragraph({
         alignment: AlignmentType.CENTER,
         spacing: { before: 0, after: 0 },
-        children: [
-          new TextRun({ text: "8-742-0944/0920-433-1754", size: hp(9), font: CAMBRIA, color: BLACK }),
-        ],
+        children: [new TextRun({ text: "8-742-0944/0920-433-1754", size: hp(9), font: CAMBRIA, color: BLACK })],
       }),
     ],
   });
@@ -190,7 +160,7 @@ function buildHeader(leftDataUrl, rightDataUrl) {
       rows: [
         new TableRow({
           children: [
-            imgCell(leftDataUrl,  AlignmentType.LEFT),
+            imgCell(leftDataUrl, AlignmentType.LEFT),
             centerCell,
             imgCell(rightDataUrl, AlignmentType.RIGHT),
           ],
@@ -204,16 +174,12 @@ function buildHeader(leftDataUrl, rightDataUrl) {
 }
 
 // ── Signature helpers ─────────────────────────────────────────────────────────
-
-// Right-aligned signature (Business Clearance, Indigency, Permit)
 function rightSig(name = PUNONG, title = "Punong Barangay") {
   return [
     new Paragraph({
       alignment: AlignmentType.RIGHT,
       spacing: { before: twip(2), after: 0 },
-      children: [
-        new TextRun({ text: name, bold: true, size: hp(11), font: CAMBRIA, underline: { type: UnderlineType.SINGLE } }),
-      ],
+      children: [new TextRun({ text: name, bold: true, size: hp(11), font: CAMBRIA, underline: { type: UnderlineType.SINGLE } })],
     }),
     new Paragraph({
       alignment: AlignmentType.RIGHT,
@@ -223,14 +189,11 @@ function rightSig(name = PUNONG, title = "Punong Barangay") {
   ];
 }
 
-// Left-aligned signature (Prepared by / Secretary)
 function leftSig(name = SECRETARY, title = "Barangay Secretary") {
   return [
     new Paragraph({
       spacing: { before: 0, after: 0 },
-      children: [
-        new TextRun({ text: name, bold: true, size: hp(11), font: CAMBRIA, underline: { type: UnderlineType.SINGLE } }),
-      ],
+      children: [new TextRun({ text: name, bold: true, size: hp(11), font: CAMBRIA, underline: { type: UnderlineType.SINGLE } })],
     }),
     new Paragraph({
       spacing: { before: 0, after: twip(4) },
@@ -239,7 +202,6 @@ function leftSig(name = SECRETARY, title = "Barangay Secretary") {
   ];
 }
 
-// Two-column signature row (Barangay Clearance — Secretary left, Punong right)
 function twoColSig() {
   return [
     new Paragraph({
@@ -263,7 +225,6 @@ function twoColSig() {
   ];
 }
 
-// Footer note
 function footerNote() {
   return new Paragraph({
     alignment: AlignmentType.CENTER,
@@ -272,7 +233,6 @@ function footerNote() {
   });
 }
 
-// Control number / OR No. / Amount footer block
 function controlBlock(data) {
   return [
     rule(),
@@ -310,7 +270,6 @@ function buildBarangayClearance(data, left, right) {
       })()
     : "6 MONTHS FROM DATE OF ISSUE";
 
-  // Build label : value rows — bold red values matching the template
   const fieldRows = [
     ["NAME",                data.full_name         || "—"],
     ["ADDRESS",             data.address           || "—"],
@@ -332,16 +291,14 @@ function buildBarangayClearance(data, left, right) {
     new TableRow({
       children: [
         new TableCell({
-          width: { size: 2200, type: WidthType.DXA },
-          borders: NO_BORDERS,
+          width: { size: 2200, type: WidthType.DXA }, borders: NO_BORDERS,
           children: [new Paragraph({
             spacing: { before: twip(1.5), after: twip(1.5) },
             children: [boldRun(label, { size: hp(10) })],
           })],
         }),
         new TableCell({
-          width: { size: 300, type: WidthType.DXA },
-          borders: NO_BORDERS,
+          width: { size: 300, type: WidthType.DXA }, borders: NO_BORDERS,
           children: [new Paragraph({
             alignment: AlignmentType.CENTER,
             spacing: { before: twip(1.5), after: twip(1.5) },
@@ -349,14 +306,12 @@ function buildBarangayClearance(data, left, right) {
           })],
         }),
         new TableCell({
-          width: { size: 5580, type: WidthType.DXA },
-          borders: NO_BORDERS,
+          width: { size: 5580, type: WidthType.DXA }, borders: NO_BORDERS,
           children: [new Paragraph({
             spacing: { before: twip(1.5), after: twip(1.5) },
             children: [new TextRun({
               text: `"${value}"`,
               bold: true, italics: true, size: hp(10), font: CAMBRIA,
-              // VALID UP TO shown in bold black (not red) when it has a real date
               color: label === "VALID UP TO" ? BLACK : RED_CERT,
             })],
           })],
@@ -365,7 +320,7 @@ function buildBarangayClearance(data, left, right) {
     })
   );
 
-  // PREPARED BY row — orange-red, separate from main rows
+  // PREPARED BY row
   fieldRows.push(
     new TableRow({
       children: [
@@ -400,18 +355,15 @@ function buildBarangayClearance(data, left, right) {
 
   const children = [
     ...buildHeader(left, right),
-
     new Paragraph({
       alignment: AlignmentType.CENTER,
       spacing: { before: twip(8), after: twip(10) },
       children: [new TextRun({ text: "BARANGAY CLEARANCE", bold: true, size: hp(20), font: TIMES })],
     }),
-
     new Paragraph({
       spacing: { before: 0, after: twip(3) },
       children: [boldRun("TO WHOM IT MAY CONCERN:", { size: hp(12) })],
     }),
-
     new Paragraph({
       alignment: AlignmentType.JUSTIFY,
       spacing: { before: 0, after: twip(6) },
@@ -422,21 +374,16 @@ function buildBarangayClearance(data, left, right) {
         run(" from this Office and the result are listed below :"),
       ],
     }),
-
     spacer(4),
-
     new Table({
       width: { size: PW, type: WidthType.DXA },
       borders: NO_BORDERS,
       rows: fieldRows,
     }),
-
     spacer(12),
     rule(),
     spacer(14),
-
     ...twoColSig(),
-
     spacer(4),
     footerNote(),
   ];
@@ -451,19 +398,17 @@ function buildCertificateIndigency(data, left, right) {
   const givenDate = data.processed_at
     ? new Date(data.processed_at).toLocaleDateString("en-PH", { month: "long", day: "numeric", year: "numeric" })
     : "—";
-  const sex    = (data.gender || "").toLowerCase() === "female" ? "Female" : "Male";
+  const sex     = (data.gender || "").toLowerCase() === "female" ? "Female" : "Male";
   const pronoun = (data.gender || "").toLowerCase() === "female" ? "She" : "He";
   const hisHer  = (data.gender || "").toLowerCase() === "female" ? "her" : "his";
 
   const children = [
     ...buildHeader(left, right),
-
     new Paragraph({
       alignment: AlignmentType.CENTER,
       spacing: { before: twip(8), after: twip(10) },
       children: [new TextRun({ text: "CERTIFICATE OF INDIGENCY", bold: true, size: hp(20), font: TIMES })],
     }),
-
     new Paragraph({
       alignment: AlignmentType.JUSTIFY,
       spacing: { before: 0, after: twip(5) },
@@ -476,14 +421,12 @@ function buildCertificateIndigency(data, left, right) {
         run(" and one of the indigents in our Barangay."),
       ],
     }),
-
     new Paragraph({
       alignment: AlignmentType.JUSTIFY,
       spacing: { before: 0, after: twip(5) },
       indent: { firstLine: twip(36) },
       children: [run(`${pronoun} is financially hard -up to pay ${hisHer} ${data.assistance_type || "medication"}.`)],
     }),
-
     new Paragraph({
       alignment: AlignmentType.JUSTIFY,
       spacing: { before: 0, after: twip(5) },
@@ -495,7 +438,6 @@ function buildCertificateIndigency(data, left, right) {
         new TextRun({ text: `"${data.purpose || "—"}".`, bold: true, italics: true, size: hp(10), font: CAMBRIA, color: RED_CERT }),
       ],
     }),
-
     new Paragraph({
       alignment: AlignmentType.JUSTIFY,
       spacing: { before: 0, after: twip(14) },
@@ -506,15 +448,12 @@ function buildCertificateIndigency(data, left, right) {
         run(" Quezon City, Philippines."),
       ],
     }),
-
     spacer(14),
     ...rightSig(PUNONG, "Punong Barangay"),
     spacer(10),
-
     new Paragraph({ spacing: { before: 0, after: twip(1) }, children: [run("Prepared by:")] }),
     spacer(4),
     ...leftSig(SECRETARY, "Barangay Secretary"),
-
     spacer(10),
     new Paragraph({
       spacing: { before: 0, after: 0 },
@@ -542,15 +481,12 @@ function buildBusinessClearance(data, left, right) {
 
   const children = [
     ...buildHeader(left, right),
-
     new Paragraph({
       alignment: AlignmentType.CENTER,
       spacing: { before: twip(8), after: twip(10) },
       children: [new TextRun({ text: "BARANGAY BUSINESS CLEARANCE", bold: true, size: hp(20), font: TIMES })],
     }),
-
     new Paragraph({ spacing: { before: 0, after: twip(3) }, children: [boldRun("TO WHOM IT MAY CONCERN:", { size: hp(11) })] }),
-
     new Paragraph({
       alignment: AlignmentType.JUSTIFY,
       spacing: { before: 0, after: twip(3) },
@@ -561,7 +497,6 @@ function buildBusinessClearance(data, left, right) {
         run(" of  business clearance of :"),
       ],
     }),
-
     new Paragraph({
       alignment: AlignmentType.CENTER,
       spacing: { before: twip(3), after: twip(1) },
@@ -577,37 +512,31 @@ function buildBusinessClearance(data, left, right) {
       spacing: { before: 0, after: twip(5) },
       children: [boldRun("BARANGAY SALVACION, LA LOMA, QUEZON CITY")],
     }),
-
     new Paragraph({
       alignment: AlignmentType.JUSTIFY,
       spacing: { before: 0, after: twip(3) },
       children: [run("It is further certified that the subject business establishment is not nuisance to public safety and order. Moreover, the above-named applicant pledge to abide with the existing laws, appertaining to said business; that the business is within Barangay territorial jurisdiction and does not occupy any Government property and sidewalk or street.")],
     }),
-
     new Paragraph({
       alignment: AlignmentType.JUSTIFY,
       spacing: { before: 0, after: twip(2) },
       children: [run("This Barangay business clearance is being issued upon the request of:")],
     }),
-
     new Paragraph({
       alignment: AlignmentType.CENTER,
       spacing: { before: twip(2), after: twip(5) },
       children: [new TextRun({ text: `"${data.full_name || "Name of Owner"}"`, bold: true, italics: true, size: hp(18), font: TIMES, color: RED_CERT })],
     }),
-
     new Paragraph({
       alignment: AlignmentType.JUSTIFY,
       spacing: { before: 0, after: twip(3) },
       children: [run("For presentation to the Business Permit & Licensing Office, this City, prior to the issuance of any license for said business activity pursuant to Sec. 152 par. C, of the 1991 Local Government Code.")],
     }),
-
     new Paragraph({
       alignment: AlignmentType.JUSTIFY,
       spacing: { before: 0, after: twip(4) },
       children: [boldRun("This certification is subject for CANCELLATION for any cause that violates the existing rules and regulation/ordinances of the City and Barangay.")],
     }),
-
     new Paragraph({
       alignment: AlignmentType.CENTER,
       spacing: { before: 0, after: twip(1) },
@@ -624,7 +553,6 @@ function buildBusinessClearance(data, left, right) {
         new TextRun({ text: `"${givenDate}"`, bold: true, size: hp(10), font: CAMBRIA, color: RED_CERT }),
       ],
     }),
-
     rule(),
     spacer(4),
     ...rightSig(PUNONG, "Punong Barangay"),
@@ -640,122 +568,352 @@ function buildBusinessClearance(data, left, right) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DOCUMENT 4 — BARANGAY CLEARANCE PERMIT  (Permit to Roast)
+// DOCUMENT 4 — BARANGAY PERMIT CLEARANCE
+// (DB key: "permit_to_roast" — display: "Barangay Permit Clearance")
+// Layout: Info strip → opening → applicant box → business box →
+//         details table → conditions → validity box → signatures
 // ─────────────────────────────────────────────────────────────────────────────
-function buildPermitToRoast(data, left, right) {
-  const givenDate = data.processed_at
-    ? new Date(data.processed_at).toLocaleDateString("en-PH", { month: "long", day: "numeric", year: "numeric" })
-    : "—";
-  const expiry = data.processed_at
-    ? (() => {
-        const d = new Date(data.processed_at);
-        d.setFullYear(d.getFullYear() + 1);
-        return d.toLocaleDateString("en-PH", { month: "long", day: "numeric", year: "numeric" });
-      })()
-    : "—";
+function buildBarangayPermitClearance(data, left, right) {
+  const fmt = (d, addYears = 0) => {
+    if (!d) return "___________________";
+    const dt = new Date(d);
+    if (addYears) dt.setFullYear(dt.getFullYear() + addYears);
+    return dt.toLocaleDateString("en-PH", { month: "long", day: "numeric", year: "numeric" });
+  };
 
-  const provision = (num, text) =>
-    new Paragraph({
-      spacing: { before: twip(1.5), after: twip(1.5) },
-      indent: { left: twip(36), hanging: twip(18) },
-      children: [boldRun(`${num}.\t`), run(text)],
+  const givenDate = fmt(data.processed_at);
+  const expiry    = fmt(data.processed_at, 1);
+  const op        = data.processed_by || "Operator";
+
+  // ── 1. Info strip — Control No | OR No | Date Issued ──────────────────────
+  const stripCellStyle = {
+    borders: {
+      top:    THIN_NAVY,
+      bottom: THIN_NAVY,
+      left:   THIN_NAVY,
+      right:  THIN_NAVY,
+    },
+    shading: { type: ShadingType.CLEAR, fill: LIGHT_BLUE, color: "auto" },
+    verticalAlign: VerticalAlign.CENTER,
+  };
+
+  const stripCell = (labelText, valueText) =>
+    new TableCell({
+      ...stripCellStyle,
+      width: { size: Math.round(PW / 3), type: WidthType.DXA },
+      children: [
+        new Paragraph({
+          alignment: AlignmentType.CENTER,
+          spacing: { before: twip(3), after: 0 },
+          children: [new TextRun({ text: labelText.toUpperCase(), bold: true, size: hp(8), font: CAMBRIA, color: NAVY })],
+        }),
+        new Paragraph({
+          alignment: AlignmentType.CENTER,
+          spacing: { before: twip(1), after: twip(3) },
+          children: [new TextRun({ text: valueText, bold: true, size: hp(10), font: CAMBRIA, color: BLACK })],
+        }),
+      ],
     });
 
+  const infoStrip = new Table({
+    width: { size: PW, type: WidthType.DXA },
+    rows: [
+      new TableRow({
+        children: [
+          stripCell("Control No.", data.control_number || "—"),
+          stripCell("O.R. No.",    data.or_no          || "—"),
+          stripCell("Date Issued", givenDate),
+        ],
+      }),
+    ],
+  });
+
+  // ── 2. Highlight box helper (applicant / business) ─────────────────────────
+  const highlightBox = (titleText, subtitleText = "") =>
+    new Table({
+      width: { size: PW, type: WidthType.DXA },
+      rows: [
+        new TableRow({
+          children: [
+            new TableCell({
+              borders: {
+                top:    MED_NAVY,
+                bottom: MED_NAVY,
+                left:   { style: BorderStyle.SINGLE, size: 24, color: NAVY }, // thick left accent
+                right:  MED_NAVY,
+              },
+              shading: { type: ShadingType.CLEAR, fill: LIGHT_BLUE, color: "auto" },
+              children: [
+                new Paragraph({
+                  alignment: AlignmentType.CENTER,
+                  spacing: { before: twip(5), after: subtitleText ? 0 : twip(5) },
+                  children: [
+                    new TextRun({ text: titleText.toUpperCase(), bold: true, size: hp(14), font: TIMES, color: NAVY }),
+                  ],
+                }),
+                ...(subtitleText
+                  ? [new Paragraph({
+                      alignment: AlignmentType.CENTER,
+                      spacing: { before: twip(2), after: twip(5) },
+                      children: [new TextRun({ text: subtitleText, italics: true, size: hp(10), font: CAMBRIA, color: BLACK })],
+                    })]
+                  : []),
+              ],
+            }),
+          ],
+        }),
+      ],
+    });
+
+  // ── 3. Details info table ──────────────────────────────────────────────────
+  const infoRows = [
+    ["Applicant Name",              data.full_name        || "—"],
+    ["Address",                     data.address          || data.business_address || "—"],
+    ["Contact Number",              data.contact_number   || "—"],
+    ["Business / Establishment",    data.business_name    || "—"],
+    ["Business Address",            data.business_address || "—"],
+    ["Nature of Business / Activity", data.business_type  || "—"],
+    ["Purpose",                     data.purpose          || "—"],
+    ["Date Issued",                 givenDate],
+    ["Valid Until",                 expiry],
+    ["O.R. No.",                    data.or_no            || "—"],
+    ["Control No.",                 data.control_number   || "—"],
+    ["Prepared By",                 data.processed_by     || SECRETARY],
+  ];
+
+  const detailsTable = new Table({
+    width: { size: PW, type: WidthType.DXA },
+    borders: {
+      top:     LIGHT_GREY,
+      bottom:  LIGHT_GREY,
+      left:    LIGHT_GREY,
+      right:   LIGHT_GREY,
+      insideH: LIGHT_GREY,
+      insideV: LIGHT_GREY,
+    },
+    rows: infoRows.map(([label, value], i) =>
+      new TableRow({
+        children: [
+          new TableCell({
+            width: { size: 2600, type: WidthType.DXA },
+            shading: i % 2 === 0
+              ? { type: ShadingType.CLEAR, fill: "F8FAFF", color: "auto" }
+              : { type: ShadingType.CLEAR, fill: "FFFFFF", color: "auto" },
+            borders: { top: LIGHT_GREY, bottom: LIGHT_GREY, left: LIGHT_GREY, right: LIGHT_GREY },
+            children: [new Paragraph({
+              spacing: { before: twip(4), after: twip(4) },
+              children: [new TextRun({ text: label.toUpperCase(), bold: true, size: hp(8.5), font: CAMBRIA, color: "374151" })],
+            })],
+          }),
+          new TableCell({
+            width: { size: 200, type: WidthType.DXA },
+            shading: i % 2 === 0
+              ? { type: ShadingType.CLEAR, fill: "F8FAFF", color: "auto" }
+              : { type: ShadingType.CLEAR, fill: "FFFFFF", color: "auto" },
+            borders: { top: LIGHT_GREY, bottom: LIGHT_GREY, left: LIGHT_GREY, right: LIGHT_GREY },
+            children: [new Paragraph({
+              alignment: AlignmentType.CENTER,
+              spacing: { before: twip(4), after: twip(4) },
+              children: [boldRun(":", { size: hp(9) })],
+            })],
+          }),
+          new TableCell({
+            width: { size: PW - 2800, type: WidthType.DXA },
+            shading: i % 2 === 0
+              ? { type: ShadingType.CLEAR, fill: "F8FAFF", color: "auto" }
+              : { type: ShadingType.CLEAR, fill: "FFFFFF", color: "auto" },
+            borders: { top: LIGHT_GREY, bottom: LIGHT_GREY, left: LIGHT_GREY, right: LIGHT_GREY },
+            children: [new Paragraph({
+              spacing: { before: twip(4), after: twip(4) },
+              children: [new TextRun({ text: value, bold: true, size: hp(9.5), font: CAMBRIA, color: BLACK })],
+            })],
+          }),
+        ],
+      })
+    ),
+  });
+
+  // ── 4. Conditions ──────────────────────────────────────────────────────────
+  const CONDITIONS = [
+    "The applicant/operator shall comply with all existing laws, ordinances, and regulations of the City and this Barangay.",
+    "The activity or business establishment shall not be a nuisance to public safety, peace, and order in the community.",
+    "This clearance does not authorize the violation of any provision of law, ordinance, or regulation.",
+    "Any violation of the conditions stated herein shall be a ground for the immediate REVOCATION of this clearance.",
+  ];
+
+  const conditionParagraphs = CONDITIONS.map((text, i) =>
+    new Paragraph({
+      spacing: { before: twip(3), after: twip(1) },
+      indent: { left: twip(36), hanging: twip(18) },
+      children: [
+        new TextRun({ text: `${i + 1}.\t`, bold: true, size: hp(10), font: CAMBRIA, color: NAVY }),
+        run(text),
+      ],
+    })
+  );
+
+  // ── 5. Validity box ────────────────────────────────────────────────────────
+  const validityBox = new Table({
+    width: { size: Math.round(PW * 0.6), type: WidthType.DXA },
+    rows: [
+      new TableRow({
+        children: [
+          new TableCell({
+            borders: {
+              top:    MED_NAVY,
+              bottom: MED_NAVY,
+              left:   MED_NAVY,
+              right:  MED_NAVY,
+            },
+            shading: { type: ShadingType.CLEAR, fill: LIGHT_BLUE, color: "auto" },
+            children: [
+              new Paragraph({
+                alignment: AlignmentType.CENTER,
+                spacing: { before: twip(4), after: 0 },
+                children: [new TextRun({ text: "VALID UNTIL", bold: true, size: hp(9), font: CAMBRIA, color: NAVY, characterSpacing: 120 })],
+              }),
+              new Paragraph({
+                alignment: AlignmentType.CENTER,
+                spacing: { before: twip(2), after: 0 },
+                children: [new TextRun({ text: expiry, bold: true, size: hp(14), font: TIMES, color: BLACK, underline: { type: UnderlineType.SINGLE } })],
+              }),
+              new Paragraph({
+                alignment: AlignmentType.CENTER,
+                spacing: { before: twip(3), after: twip(4) },
+                children: [new TextRun({ text: "Pursuant to Sec. 152, par. C of the 1991 Local Government Code", italics: true, size: hp(8), font: CAMBRIA, color: "6B7280" })],
+              }),
+            ],
+          }),
+        ],
+      }),
+    ],
+  });
+
+  // ── Assemble all children ──────────────────────────────────────────────────
   const children = [
     ...buildHeader(left, right),
 
+    // Title
     new Paragraph({
       alignment: AlignmentType.CENTER,
-      spacing: { before: twip(8), after: twip(10) },
-      children: [new TextRun({ text: "BARANGAY CLEARANCE PERMIT", bold: true, size: hp(20), font: TIMES })],
+      spacing: { before: twip(8), after: twip(8) },
+      children: [new TextRun({ text: "BARANGAY PERMIT CLEARANCE", bold: true, size: hp(20), font: TIMES })],
     }),
 
-    new Paragraph({ spacing: { before: 0, after: twip(3) }, children: [boldRun("TO WHOM IT MAY CONCERN:", { size: hp(11) })] }),
+    // Info strip
+    infoStrip,
+    spacer(8),
 
+    // Opening
+    new Paragraph({
+      spacing: { before: 0, after: twip(3) },
+      children: [boldRun("TO WHOM IT MAY CONCERN:", { size: hp(12) })],
+    }),
     new Paragraph({
       alignment: AlignmentType.JUSTIFY,
-      spacing: { before: 0, after: twip(3) },
+      spacing: { before: 0, after: twip(4) },
       indent: { firstLine: twip(36) },
       children: [
-        run("This is to certify that the Sangguniang barangay of Salvacion "),
-        boldRun("Interposes no objection"),
-        run(" with the reference to the "),
-        boldRun("APPLICATION OF"),
+        run("This is to certify that the Sangguniang Barangay of "),
+        boldRun("Barangay Salvacion, La Loma, Quezon City", { italics: true }),
+        run(" interposes "),
+        boldRun("NO OBJECTION", { underline: { type: UnderlineType.SINGLE } }),
+        run(" and hereby grants this "),
+        boldRun("BARANGAY PERMIT CLEARANCE", { italics: true }),
+        run(" to:"),
       ],
     }),
 
-    new Paragraph({
-      alignment: AlignmentType.CENTER,
-      spacing: { before: twip(3), after: twip(1) },
-      children: [new TextRun({ text: `"${data.business_name || "BUSINESS NAME"}"`, bold: true, size: hp(14), font: CAMBRIA, color: RED_CERT })],
-    }),
-    new Paragraph({
-      alignment: AlignmentType.CENTER,
-      spacing: { before: 0, after: twip(1) },
-      children: [
-        boldRun("FOR A PERMIT TO ", { size: hp(12), color: RED_CERT }),
-        new TextRun({ text: `"${data.items_to_roast || data.purpose || "PURPOSE"}"`, bold: true, size: hp(12), font: CAMBRIA, color: RED_CERT }),
-      ],
-    }),
-    new Paragraph({
-      alignment: AlignmentType.CENTER,
-      spacing: { before: 0, after: twip(5) },
-      children: [
-        boldRun("AT ", { size: hp(12), color: RED_CERT }),
-        new TextRun({ text: `"${data.business_address || "ADDRESS"}"`, bold: true, size: hp(12), font: CAMBRIA, color: RED_CERT }),
-      ],
-    }),
-
-    new Paragraph({ spacing: { before: 0, after: twip(2) }, children: [run("Provided that:")] }),
-
-    provision(1, "This business facility is 15  meters away from any petroleum filling station, establishments which may produce, manufacture or store combustible or flammable materials."),
-    provision(2, "The business establishment is not erected  on a public sidewalk, street, avenue, park or plaza\nOr any government property (Sec. 17, Ord.85)"),
-    provision(3, "This business establishment is not a nuisance to the public safety and order:"),
-    provision(4, "That they will comply with the sanitary requirements of the City and this Barangay."),
-
+    // Applicant highlight box
+    highlightBox(
+      data.full_name || "APPLICANT NAME",
+      data.address || data.business_address || ""
+    ),
     spacer(4),
 
     new Paragraph({
       alignment: AlignmentType.JUSTIFY,
-      spacing: { before: 0, after: twip(3) },
-      children: [run("For presentation to the Business permit & Licensing Office of this City, prior to the issuance of any license or permit for said business activity pursuant to Sec. 152, par. C, of the 1991 Local Government Code.")],
-    }),
-
-    new Paragraph({
-      alignment: AlignmentType.JUSTIFY,
       spacing: { before: 0, after: twip(4) },
-      children: [
-        run("Any violation/s of the above-mentioned prohibitions is/are grounds for "),
-        boldRun("REVOCATION OF THIS CLEARANCE."),
-      ],
+      indent: { firstLine: twip(36) },
+      children: [run("For the operation / conduct of:")],
     }),
 
+    // Business highlight box
+    highlightBox(
+      data.business_name || "BUSINESS / ESTABLISHMENT NAME",
+      [data.business_type, data.business_address].filter(Boolean).join(" · ") || ""
+    ),
+    spacer(8),
+
+    // Details table
+    detailsTable,
+    spacer(8),
+
+    // Conditions
     new Paragraph({
-      alignment: AlignmentType.CENTER,
-      spacing: { before: 0, after: twip(1) },
-      children: [
-        boldRun("This permit will expire on "),
-        new TextRun({ text: `"${expiry}"`, bold: true, size: hp(10), font: CAMBRIA, color: RED_CERT }),
-      ],
+      spacing: { before: 0, after: twip(3) },
+      children: [boldRun("This clearance is issued subject to the following conditions:", { size: hp(10) })],
     }),
+    ...conditionParagraphs,
+    spacer(6),
+
+    // Validity box (centered)
     new Paragraph({
       alignment: AlignmentType.CENTER,
-      spacing: { before: 0, after: twip(10) },
+      spacing: { before: 0, after: twip(4) },
+      children: [],
+    }),
+    validityBox,
+    spacer(4),
+
+    // Given this line
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { before: 0, after: twip(8) },
       children: [
         boldRun("Given this "),
         new TextRun({ text: `"${givenDate}"`, bold: true, size: hp(10), font: CAMBRIA, color: RED_CERT }),
+        run(` (${op}) at Barangay Salvacion, La Loma, Quezon City.`),
       ],
     }),
 
     rule(),
     spacer(4),
-    ...rightSig(PUNONG, "Punong Barangay"),
-    spacer(2),
-    new Paragraph({ spacing: { before: 0, after: twip(1) }, children: [run("Records verified by")] }),
-    spacer(4),
-    ...leftSig(SECRETARY, "Barangay Secretary"),
-    ...controlBlock(data),
-    footerNote(),
+
+    // Two-column signatures
+    new Paragraph({
+      tabStops: [{ type: "right", position: PW }],
+      spacing: { before: twip(2), after: 0 },
+      children: [
+        run("Records verified by:", { italics: true }),
+        new TextRun({ text: "\t" }),
+      ],
+    }),
+    spacer(14),
+    new Paragraph({
+      tabStops: [{ type: "right", position: PW }],
+      spacing: { before: 0, after: 0 },
+      children: [
+        new TextRun({ text: SECRETARY, bold: true, size: hp(11), font: CAMBRIA, underline: { type: UnderlineType.SINGLE } }),
+        new TextRun({ text: "\t" }),
+        new TextRun({ text: PUNONG, bold: true, size: hp(11), font: CAMBRIA, underline: { type: UnderlineType.SINGLE } }),
+      ],
+    }),
+    new Paragraph({
+      tabStops: [{ type: "right", position: PW }],
+      spacing: { before: 0, after: twip(4) },
+      children: [
+        new TextRun({ text: "Barangay Secretary", italics: true, size: hp(10), font: CAMBRIA }),
+        new TextRun({ text: "\t" }),
+        new TextRun({ text: "Punong Barangay",    italics: true, size: hp(10), font: CAMBRIA }),
+      ],
+    }),
+
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { before: twip(6), after: 0 },
+      children: [new TextRun({ text: "*Not valid without official dry seal", italics: true, size: hp(8), font: CAMBRIA })],
+    }),
   ];
 
   return new Document({ sections: [{ properties: { page: PAGE }, children }] });
@@ -767,15 +925,12 @@ function buildPermitToRoast(data, left, right) {
 
 /**
  * generateCertificate(request, images)
- *
  * Builds the correct certificate DOCX and triggers a browser download.
  *
  * @param {Object} request — full service_requests row from Supabase
- * @param {Object} images  — { left, right } — data URLs from getBase64FromUrl()
- *                           Also accepts { leftHeader, rightHeader } for back-compat.
+ * @param {Object} images  — { left, right } data URLs from getBase64FromUrl()
  */
 export async function generateCertificate(request, images = {}) {
-  // Support both naming conventions
   const leftDataUrl  = images.left  ?? images.leftHeader  ?? null;
   const rightDataUrl = images.right ?? images.rightHeader ?? null;
 
@@ -791,16 +946,16 @@ export async function generateCertificate(request, images = {}) {
       doc = buildBusinessClearance(request, leftDataUrl, rightDataUrl);
       break;
     case "permit_to_roast":
-      doc = buildPermitToRoast(request, leftDataUrl, rightDataUrl);
+      doc = buildBarangayPermitClearance(request, leftDataUrl, rightDataUrl);
       break;
     default:
       throw new Error(`No DOCX template for service type: ${request.service_type}`);
   }
 
-  const blob     = await Packer.toBlob(doc);
-  const url      = URL.createObjectURL(blob);
-  const anchor   = document.createElement("a");
-  anchor.href    = url;
+  const blob    = await Packer.toBlob(doc);
+  const url     = URL.createObjectURL(blob);
+  const anchor  = document.createElement("a");
+  anchor.href   = url;
   const safeName = (request.full_name || "Applicant").replace(/\s+/g, "_");
   anchor.download = `${request.control_number || request.service_type}_${safeName}.docx`;
   document.body.appendChild(anchor);
@@ -814,6 +969,10 @@ export async function generateCertificate(request, images = {}) {
  * barangay_id is a physical card — no DOCX template.
  */
 export function hasDocxTemplate(serviceType) {
-  return ["barangay_clearance", "certificate_indigency", "business_clearance", "permit_to_roast"]
-    .includes(serviceType);
+  return [
+    "barangay_clearance",
+    "certificate_indigency",
+    "business_clearance",
+    "permit_to_roast",
+  ].includes(serviceType);
 }
