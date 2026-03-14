@@ -76,7 +76,7 @@ function CreateUserModal({ mode, onClose, onSuccess }) {
     full_name: '',
     email:     '',
     password:  '',
-    role:      isResponder ? '' : 'operator',  // role only used for admins
+    role:      isResponder ? '' : 'operator',
     team:      isResponder ? 'bpso' : '',
   });
   const [showPassword, setShowPassword] = useState(false);
@@ -163,7 +163,6 @@ function CreateUserModal({ mode, onClose, onSuccess }) {
             </div>
           )}
 
-          {/* Full Name */}
           <div>
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-widest mb-1.5">
               {isResponder ? 'Responder Name' : 'Full Name'}
@@ -178,7 +177,6 @@ function CreateUserModal({ mode, onClose, onSuccess }) {
             />
           </div>
 
-          {/* Email */}
           <div>
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-widest mb-1.5">
               Email Address
@@ -193,7 +191,6 @@ function CreateUserModal({ mode, onClose, onSuccess }) {
             />
           </div>
 
-          {/* Password */}
           <div>
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-widest mb-1.5">
               Password
@@ -218,7 +215,6 @@ function CreateUserModal({ mode, onClose, onSuccess }) {
             </div>
           </div>
 
-          {/* Admin Role picker — admins only */}
           {!isResponder && (
             <div>
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-widest mb-1.5">
@@ -244,7 +240,6 @@ function CreateUserModal({ mode, onClose, onSuccess }) {
             </div>
           )}
 
-          {/* Team picker — responders only */}
           {isResponder && (
             <div>
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-widest mb-1.5">
@@ -270,7 +265,6 @@ function CreateUserModal({ mode, onClose, onSuccess }) {
             </div>
           )}
 
-          {/* Actions */}
           <div className="flex gap-2 pt-2">
             <button
               type="button"
@@ -323,8 +317,6 @@ function TeamCard({ team, members }) {
 
   return (
     <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
-
-      {/* Team Header */}
       <div className={`${team.header} px-5 py-3 flex items-center justify-between`}>
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 bg-white/20 rounded flex items-center justify-center">
@@ -379,8 +371,6 @@ function TeamCard({ team, members }) {
                 <tbody className="divide-y divide-slate-100">
                   {members.map(r => (
                     <tr key={r.id} className="hover:bg-slate-50 transition-colors">
-
-                      {/* Responder Info */}
                       <td className="px-5 py-4">
                         <div className="flex items-center gap-3">
                           <div className={`w-9 h-9 ${team.header} rounded flex items-center justify-center text-white font-bold text-sm flex-shrink-0`}>
@@ -395,8 +385,6 @@ function TeamCard({ team, members }) {
                           </div>
                         </div>
                       </td>
-
-                      {/* Status */}
                       <td className="px-5 py-4">
                         <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded border text-xs font-semibold capitalize ${getStatusStyle(r.status)}`}>
                           <span className={`w-1.5 h-1.5 rounded-full ${
@@ -406,16 +394,12 @@ function TeamCard({ team, members }) {
                           {r.status || 'offline'}
                         </span>
                       </td>
-
-                      {/* Last Active */}
                       <td className="px-5 py-4">
                         <div className="flex items-center gap-1.5 text-xs text-slate-600">
                           <Clock className="w-3.5 h-3.5 text-slate-400" />
                           {timeAgo(r.last_updated)}
                         </div>
                       </td>
-
-                      {/* Location */}
                       <td className="px-5 py-4 text-xs text-slate-500">
                         {r.current_lat && r.current_lng
                           ? `${r.current_lat.toFixed(4)}, ${r.current_lng.toFixed(4)}`
@@ -475,7 +459,6 @@ function RespondersTab() {
 
   return (
     <>
-      {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
           { label: 'Total Responders', value: responders.length,    color: 'text-slate-700' },
@@ -490,7 +473,6 @@ function RespondersTab() {
         ))}
       </div>
 
-      {/* Section Header */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-sm font-bold text-slate-700 uppercase tracking-widest">Response Teams</h2>
@@ -504,7 +486,6 @@ function RespondersTab() {
         </button>
       </div>
 
-      {/* Team Cards */}
       {loading ? (
         <div className="flex items-center justify-center py-20">
           <div className="w-6 h-6 border-2 border-slate-200 border-t-slate-600 rounded-full animate-spin" />
@@ -540,6 +521,9 @@ export default function AdminManagement() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [actionLoading,   setActionLoading]   = useState(null);
 
+  // FIX: surface toggle errors in the UI instead of swallowing them silently
+  const [toggleError, setToggleError] = useState('');
+
   useEffect(() => { fetchAdmins(); }, []);
 
   const fetchAdmins = async () => {
@@ -551,26 +535,71 @@ export default function AdminManagement() {
         .order('created_at', { ascending: false });
       if (error) throw error;
       setAdmins(data || []);
-    } catch (err) { console.error('Error fetching admins:', err); }
-    finally { setLoading(false); }
+    } catch (err) {
+      console.error('Error fetching admins:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const toggleActive = async (admin) => {
+    if (actionLoading) return;
+
     setActionLoading(admin.id);
+    setToggleError('');
+
+    const newStatus = !admin.is_active;
+
+    // Optimistic update
+    setAdmins(prev =>
+      prev.map(a => a.id === admin.id ? { ...a, is_active: newStatus } : a)
+    );
+
     try {
-      const newStatus = !admin.is_active;
-      const { error } = await supabase
-        .from('admin_users').update({ is_active: newStatus }).eq('id', admin.id);
+      // The admin_users table has TWO id-like columns:
+      //   id          → internal PK (gen_random_uuid)
+      //   auth_user_id → FK to auth.users
+      //
+      // We filter by email (unique constraint) as the safest match,
+      // avoiding any confusion between the two UUID columns.
+      const { data, error } = await supabase
+        .from('admin_users')
+        .update({ is_active: newStatus })
+        .eq('email', admin.email)   // ← email has a unique constraint, always safe
+        .select('id, email, is_active'); // return the updated row to confirm
+
       if (error) throw error;
+
+      // If no rows came back, the filter matched nothing
+      if (!data || data.length === 0) {
+        throw new Error(`No row matched email "${admin.email}" — update had no effect.`);
+      }
+
       await logAuditAction({
         action:      newStatus ? 'activate_admin' : 'deactivate_admin',
         actionType:  'admin_management',
         description: `${newStatus ? 'Activated' : 'Deactivated'} admin: ${admin.email}`,
         severity:    'info',
       });
-      fetchAdmins();
-    } catch (err) { console.error('Error toggling status:', err); }
-    finally { setActionLoading(null); }
+
+      await fetchAdmins();
+
+    } catch (err) {
+      console.error('toggleActive error:', err);
+
+      // Roll back optimistic update
+      setAdmins(prev =>
+        prev.map(a => a.id === admin.id ? { ...a, is_active: admin.is_active } : a)
+      );
+
+      setToggleError(
+        err?.message?.includes('row-level security')
+          ? 'Permission denied. Your account may not have rights to modify admins.'
+          : err?.message || 'Failed to update status. Please try again.'
+      );
+    } finally {
+      setActionLoading(null);
+    }
   };
 
   const timeAgo = (date) => {
@@ -637,6 +666,22 @@ export default function AdminManagement() {
               </div>
             ))}
           </div>
+
+          {/* Toggle error banner */}
+          {toggleError && (
+            <div className="p-3 bg-red-50 border border-red-300 rounded-lg flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="text-xs text-red-700 font-medium">{toggleError}</p>
+              </div>
+              <button
+                onClick={() => setToggleError('')}
+                className="text-red-400 hover:text-red-600 transition-colors"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
 
           {/* Admins Table */}
           <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
@@ -707,18 +752,19 @@ export default function AdminManagement() {
                           <button
                             onClick={() => toggleActive(admin)}
                             disabled={actionLoading === admin.id}
-                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded border text-xs font-semibold transition-all disabled:opacity-50 ${
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded border text-xs font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
                               admin.is_active
                                 ? 'bg-white border-red-300 text-red-600 hover:bg-red-50'
                                 : 'bg-white border-green-300 text-green-600 hover:bg-green-50'
                             }`}
                           >
-                            {actionLoading === admin.id
-                              ? <div className="w-3 h-3 border-2 border-current/30 border-t-current rounded-full animate-spin" />
-                              : admin.is_active
-                                ? <><XCircle className="w-3.5 h-3.5" />Deactivate</>
-                                : <><CheckCircle className="w-3.5 h-3.5" />Activate</>
-                            }
+                            {actionLoading === admin.id ? (
+                              <div className="w-3 h-3 border-2 border-current/30 border-t-current rounded-full animate-spin" />
+                            ) : admin.is_active ? (
+                              <><XCircle className="w-3.5 h-3.5" />Deactivate</>
+                            ) : (
+                              <><CheckCircle className="w-3.5 h-3.5" />Activate</>
+                            )}
                           </button>
                         </td>
                       </tr>

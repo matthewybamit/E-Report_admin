@@ -10,14 +10,14 @@ import {
   X, Phone, Mail, User, Navigation, Image as ImageIcon, Send,
   Edit3, TrendingUp, TrendingDown, Filter, Download, RefreshCw,
   ChevronRight, AlertTriangle, Shield, Package, Wrench,
-  MessageSquare, UserCheck, Ambulance, Flame, Radio, BarChart2
+  MessageSquare, UserCheck, Ambulance, Flame, Radio, BarChart2,
+  CalendarRange, CalendarDays, ChevronDown
 } from 'lucide-react';
 
 // ─── Map Config ───────────────────────────────────────────────────────────────
 const QC_CENTER = [14.6760, 121.0437];
 const INITIAL_ZOOM = 13;
 
-// Smaller, sharper pinpoint icons (16×24 instead of 28×40)
 const createCustomIcon = (color) => L.divIcon({
   className: '',
   html: `
@@ -52,43 +52,170 @@ const orangeIcon = createCustomIcon('#f97316');
 
 // ─── Barangay Salvacion Boundary ──────────────────────────────────────────────
 const SALVACION_BOUNDARY = [
-  [14.6801, 121.0389],
-  [14.6812, 121.0401],
-  [14.6825, 121.0415],
-  [14.6834, 121.0428],
-  [14.6840, 121.0445],
-  [14.6838, 121.0462],
-  [14.6830, 121.0475],
-  [14.6818, 121.0483],
-  [14.6804, 121.0487],
-  [14.6789, 121.0484],
-  [14.6776, 121.0476],
-  [14.6767, 121.0463],
-  [14.6763, 121.0448],
-  [14.6765, 121.0431],
-  [14.6772, 121.0416],
-  [14.6783, 121.0404],
-  [14.6794, 121.0394],
-  [14.6801, 121.0389],
+  [14.6801, 121.0389],[14.6812, 121.0401],[14.6825, 121.0415],
+  [14.6834, 121.0428],[14.6840, 121.0445],[14.6838, 121.0462],
+  [14.6830, 121.0475],[14.6818, 121.0483],[14.6804, 121.0487],
+  [14.6789, 121.0484],[14.6776, 121.0476],[14.6767, 121.0463],
+  [14.6763, 121.0448],[14.6765, 121.0431],[14.6772, 121.0416],
+  [14.6783, 121.0404],[14.6794, 121.0394],[14.6801, 121.0389],
 ];
 
 function haversineDistance([lat1, lng1], [lat2, lng2]) {
-  const R    = 6371000;
+  const R = 6371000;
   const toRad = (d) => (d * Math.PI) / 180;
   const dLat = toRad(lat2 - lat1);
   const dLng = toRad(lng2 - lng1);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 function computeCircumference(coords) {
   let total = 0;
-  for (let i = 0; i < coords.length - 1; i++) {
-    total += haversineDistance(coords[i], coords[i + 1]);
-  }
+  for (let i = 0; i < coords.length - 1; i++) total += haversineDistance(coords[i], coords[i + 1]);
   return total;
+}
+
+// ─── Date Preset Helper ───────────────────────────────────────────────────────
+const DATE_PRESETS = [
+  { key: 'all',       label: 'All Time'     },
+  { key: 'today',     label: 'Today'        },
+  { key: 'yesterday', label: 'Yesterday'    },
+  { key: '7d',        label: 'Last 7 Days'  },
+  { key: '30d',       label: 'Last 30 Days' },
+  { key: '90d',       label: 'Last 90 Days' },
+  { key: 'custom',    label: 'Custom Range' },
+];
+
+function getPresetRange(preset) {
+  const now = new Date();
+  const startOfDay = (d) => { const x = new Date(d); x.setHours(0,0,0,0); return x; };
+  const endOfDay   = (d) => { const x = new Date(d); x.setHours(23,59,59,999); return x; };
+
+  switch (preset) {
+    case 'today':
+      return { from: startOfDay(now).toISOString(), to: endOfDay(now).toISOString() };
+    case 'yesterday': {
+      const yest = new Date(now); yest.setDate(yest.getDate() - 1);
+      return { from: startOfDay(yest).toISOString(), to: endOfDay(yest).toISOString() };
+    }
+    case '7d': {
+      const d = new Date(now); d.setDate(d.getDate() - 7);
+      return { from: startOfDay(d).toISOString(), to: endOfDay(now).toISOString() };
+    }
+    case '30d': {
+      const d = new Date(now); d.setDate(d.getDate() - 30);
+      return { from: startOfDay(d).toISOString(), to: endOfDay(now).toISOString() };
+    }
+    case '90d': {
+      const d = new Date(now); d.setDate(d.getDate() - 90);
+      return { from: startOfDay(d).toISOString(), to: endOfDay(now).toISOString() };
+    }
+    default:
+      return { from: null, to: null };
+  }
+}
+
+// ─── Date Filter Panel ────────────────────────────────────────────────────────
+function DateFilterPanel({ datePreset, setDatePreset, customFrom, setCustomFrom, customTo, setCustomTo }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  // Close on outside click
+  useEffect(() => {
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const activeLabel = DATE_PRESETS.find(p => p.key === datePreset)?.label || 'All Time';
+  const isActive    = datePreset !== 'all';
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        className={`flex items-center gap-2 px-3 py-2 border rounded text-xs font-semibold transition-all ${
+          isActive
+            ? 'bg-slate-700 text-white border-slate-700 shadow-sm'
+            : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+        }`}
+      >
+        <CalendarDays className="w-3.5 h-3.5" />
+        {datePreset === 'custom' && customFrom && customTo
+          ? `${customFrom} → ${customTo}`
+          : activeLabel}
+        <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div className="absolute left-0 top-full mt-1.5 z-[600] bg-white border border-slate-200 rounded-lg shadow-xl w-64 overflow-hidden">
+          {/* Preset list */}
+          <div className="p-1.5 border-b border-slate-100">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-2 py-1">Quick Select</p>
+            {DATE_PRESETS.filter(p => p.key !== 'custom').map(({ key, label }) => (
+              <button
+                key={key}
+                onClick={() => { setDatePreset(key); if (key !== 'custom') setOpen(false); }}
+                className={`w-full text-left flex items-center justify-between px-3 py-2 rounded text-xs font-semibold transition-colors ${
+                  datePreset === key && key !== 'custom'
+                    ? 'bg-slate-700 text-white'
+                    : 'text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                {label}
+                {datePreset === key && key !== 'custom' && <CheckCircle className="w-3.5 h-3.5" />}
+              </button>
+            ))}
+          </div>
+
+          {/* Custom range */}
+          <div className="p-3">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Custom Range</p>
+            <div className="space-y-2">
+              <div>
+                <label className="text-[10px] font-semibold text-slate-500 uppercase block mb-1">From</label>
+                <input
+                  type="datetime-local"
+                  value={customFrom}
+                  onChange={e => { setCustomFrom(e.target.value); setDatePreset('custom'); }}
+                  className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-semibold text-slate-500 uppercase block mb-1">To</label>
+                <input
+                  type="datetime-local"
+                  value={customTo}
+                  onChange={e => { setCustomTo(e.target.value); setDatePreset('custom'); }}
+                  className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400"
+                />
+              </div>
+              {datePreset === 'custom' && customFrom && customTo && (
+                <button
+                  onClick={() => setOpen(false)}
+                  className="w-full py-1.5 bg-slate-700 hover:bg-slate-800 text-white rounded text-xs font-bold transition-colors"
+                >
+                  Apply Range
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Clear */}
+          {isActive && (
+            <div className="border-t border-slate-100 p-2">
+              <button
+                onClick={() => { setDatePreset('all'); setCustomFrom(''); setCustomTo(''); setOpen(false); }}
+                className="w-full py-1.5 text-xs font-semibold text-red-500 hover:bg-red-50 rounded transition-colors flex items-center justify-center gap-1.5"
+              >
+                <X className="w-3 h-3" />Clear Date Filter
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ─── Status / Priority Badges ─────────────────────────────────────────────────
@@ -450,7 +577,6 @@ function InteractiveMap({ markers, selectedMarker, onMarkerClick }) {
   const markersLayerRef = useRef(null);
   const [circumference, setCircumference] = useState(null);
 
-  // Mount map once
   useEffect(() => {
     if (mapInstanceRef.current) return;
 
@@ -465,14 +591,9 @@ function InteractiveMap({ markers, selectedMarker, onMarkerClick }) {
 
     L.control.attribution({ position: 'bottomright' }).addTo(map);
 
-    // ── Barangay Salvacion boundary polygon ───────────────────────────────────
     const polygon = L.polygon(SALVACION_BOUNDARY, {
-      color:       '#1e40af',
-      weight:      2,
-      opacity:     0.85,
-      fillColor:   '#3b82f6',
-      fillOpacity: 0.08,
-      dashArray:   '6, 4',
+      color: '#1e40af', weight: 2, opacity: 0.85,
+      fillColor: '#3b82f6', fillOpacity: 0.08, dashArray: '6, 4',
     }).addTo(map);
 
     const perimeterM  = computeCircumference(SALVACION_BOUNDARY);
@@ -497,7 +618,6 @@ function InteractiveMap({ markers, selectedMarker, onMarkerClick }) {
     };
   }, []);
 
-  // Update markers
   useEffect(() => {
     if (!mapInstanceRef.current || !markersLayerRef.current) return;
     markersLayerRef.current.clearLayers();
@@ -531,7 +651,6 @@ function InteractiveMap({ markers, selectedMarker, onMarkerClick }) {
     });
   }, [markers, selectedMarker, onMarkerClick]);
 
-  // Fly to selected
   useEffect(() => {
     if (selectedMarker && mapInstanceRef.current) {
       const lat = selectedMarker.latitude || selectedMarker.lat;
@@ -543,13 +662,9 @@ function InteractiveMap({ markers, selectedMarker, onMarkerClick }) {
   return (
     <div className="relative w-full h-full rounded overflow-hidden border border-slate-200 z-0">
       <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />
-
-      {/* Live view badge */}
       <div className="absolute top-2 right-2 z-[500] bg-white/90 backdrop-blur-sm px-2.5 py-1 rounded border border-slate-200 text-xs font-semibold text-slate-600 shadow-sm">
         Quezon City Live View
       </div>
-
-      {/* Salvacion circumference card */}
       {circumference && (
         <div className="absolute bottom-3 left-3 z-[500] bg-white/95 backdrop-blur-sm border border-blue-200 rounded-lg shadow-md px-3.5 py-2.5 min-w-[170px]">
           <p className="text-xs font-bold text-blue-800 uppercase tracking-widest mb-1">Brgy. Salvacion</p>
@@ -560,14 +675,12 @@ function InteractiveMap({ markers, selectedMarker, onMarkerClick }) {
           <p className="text-xs text-slate-500 mt-0.5">{circumference.meters.toLocaleString()} m boundary perimeter</p>
         </div>
       )}
-
-      {/* Legend */}
       <div className="absolute bottom-3 right-3 z-[500] bg-white/95 backdrop-blur-sm border border-slate-200 rounded-lg shadow-md px-3 py-2 space-y-1.5">
         {[
-          { color: '#ef4444', label: 'Urgent' },
-          { color: '#f97316', label: 'High'   },
-          { color: '#3b82f6', label: 'Normal' },
-          { color: '#22c55e', label: 'Resolved'},
+          { color: '#ef4444', label: 'Urgent'   },
+          { color: '#f97316', label: 'High'     },
+          { color: '#3b82f6', label: 'Normal'   },
+          { color: '#22c55e', label: 'Resolved' },
         ].map(({ color, label }) => (
           <div key={label} className="flex items-center gap-2">
             <span style={{ background: color }} className="w-2.5 h-2.5 rounded-full flex-shrink-0" />
@@ -629,6 +742,12 @@ export default function Dashboard() {
   const [filterStatus, setFilterStatus]         = useState('all');
   const [filterPriority, setFilterPriority]     = useState('all');
   const [dataType, setDataType]                 = useState('all');
+
+  // ── Date filter state ──────────────────────────────────────────────────────
+  const [datePreset,  setDatePreset]  = useState('all');
+  const [customFrom,  setCustomFrom]  = useState('');
+  const [customTo,    setCustomTo]    = useState('');
+
   const [stats, setStats] = useState({
     totalReports: 0, totalEmergencies: 0, activeUsers: 0,
     urgentReports: 0, urgentEmergencies: 0,
@@ -641,30 +760,71 @@ export default function Dashboard() {
   const [mapData, setMapData]               = useState([]);
   const [notifications, setNotifications]   = useState([]);
 
+  // ── Compute effective date range ───────────────────────────────────────────
+  const getActiveDateRange = () => {
+    if (datePreset === 'custom') {
+      return {
+        from: customFrom ? new Date(customFrom).toISOString() : null,
+        to:   customTo   ? new Date(customTo).toISOString()   : null,
+      };
+    }
+    return getPresetRange(datePreset);
+  };
+
+  const applyDateFilter = (query, range) => {
+    if (range.from) query = query.gte('created_at', range.from);
+    if (range.to)   query = query.lte('created_at', range.to);
+    return query;
+  };
+
   const fetchData = async () => {
     setLoading(true);
+    const dateRange = getActiveDateRange();
+
     try {
       const today   = new Date().toISOString().split('T')[0];
       const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
+      // Base queries respect the active date range for the primary counts
+      const base = () => ({ reports: supabase.from('reports'), emergencies: supabase.from('emergencies') });
+
+      // Helper: build a count query with optional date range
+      const countQ = (table, extra = (q) => q) => {
+        let q = extra(applyDateFilter(
+          supabase.from(table).select('*', { count: 'exact', head: true }),
+          dateRange
+        ));
+        return q;
+      };
+
       const [
-        { count: totalReports },    { count: urgentReports },    { count: resolvedReports },
-        { count: pendingReports },  { count: inProgressReports },{ count: todayReports },
-        { count: totalEmergencies },{ count: urgentEmergencies },{ count: resolvedEmergencies },
-        { count: pendingEmergencies },{ count: dispatchedEmergencies },{ count: todayEmergencies },
-        { count: activeUsers },     { count: lastWeekReports }
+        { count: totalReports },
+        { count: urgentReports },
+        { count: resolvedReports },
+        { count: pendingReports },
+        { count: inProgressReports },
+        { count: todayReports },
+        { count: totalEmergencies },
+        { count: urgentEmergencies },
+        { count: resolvedEmergencies },
+        { count: pendingEmergencies },
+        { count: dispatchedEmergencies },
+        { count: todayEmergencies },
+        { count: activeUsers },
+        { count: lastWeekReports }
       ] = await Promise.all([
-        supabase.from('reports').select('*', { count: 'exact', head: true }),
-        supabase.from('reports').select('*', { count: 'exact', head: true }).eq('priority', 'urgent').neq('status', 'resolved'),
-        supabase.from('reports').select('*', { count: 'exact', head: true }).eq('status', 'resolved'),
-        supabase.from('reports').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
-        supabase.from('reports').select('*', { count: 'exact', head: true }).eq('status', 'in-progress'),
+        countQ('reports'),
+        countQ('reports',      q => q.eq('priority', 'urgent').neq('status', 'resolved')),
+        countQ('reports',      q => q.eq('status', 'resolved')),
+        countQ('reports',      q => q.eq('status', 'pending')),
+        countQ('reports',      q => q.eq('status', 'in-progress')),
+        // Today count always uses calendar day regardless of date filter
         supabase.from('reports').select('*', { count: 'exact', head: true }).gte('created_at', today),
-        supabase.from('emergencies').select('*', { count: 'exact', head: true }),
-        supabase.from('emergencies').select('*', { count: 'exact', head: true }).neq('status', 'resolved'),
-        supabase.from('emergencies').select('*', { count: 'exact', head: true }).eq('status', 'resolved'),
-        supabase.from('emergencies').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
-        supabase.from('emergencies').select('*', { count: 'exact', head: true }).eq('status', 'dispatched'),
+        countQ('emergencies'),
+        countQ('emergencies',  q => q.neq('status', 'resolved')),
+        countQ('emergencies',  q => q.eq('status', 'resolved')),
+        countQ('emergencies',  q => q.eq('status', 'pending')),
+        countQ('emergencies',  q => q.eq('status', 'dispatched')),
         supabase.from('emergencies').select('*', { count: 'exact', head: true }).gte('created_at', today),
         supabase.from('admin_users').select('*', { count: 'exact', head: true }),
         supabase.from('reports').select('*', { count: 'exact', head: true }).gte('created_at', weekAgo),
@@ -675,44 +835,53 @@ export default function Dashboard() {
         : 0;
 
       setStats({
-        totalReports: totalReports || 0,       totalEmergencies: totalEmergencies || 0,
-        urgentReports: urgentReports || 0,     urgentEmergencies: urgentEmergencies || 0,
-        resolvedReports: resolvedReports || 0, resolvedEmergencies: resolvedEmergencies || 0,
-        pendingReports: pendingReports || 0,   pendingEmergencies: pendingEmergencies || 0,
+        totalReports: totalReports || 0,         totalEmergencies: totalEmergencies || 0,
+        urgentReports: urgentReports || 0,       urgentEmergencies: urgentEmergencies || 0,
+        resolvedReports: resolvedReports || 0,   resolvedEmergencies: resolvedEmergencies || 0,
+        pendingReports: pendingReports || 0,     pendingEmergencies: pendingEmergencies || 0,
         inProgressReports: inProgressReports || 0, dispatchedEmergencies: dispatchedEmergencies || 0,
         activeUsers: activeUsers || 0,
-        todayReports: todayReports || 0,       todayEmergencies: todayEmergencies || 0,
+        todayReports: todayReports || 0,         todayEmergencies: todayEmergencies || 0,
         weekTrend,
       });
 
+      // ── Recent activity with date filter ──────────────────────────────────
       let activityData = [];
       if (dataType !== 'emergencies') {
-        const { data } = await supabase.from('reports').select('*').order('created_at', { ascending: false }).limit(4);
+        let q = supabase.from('reports').select('*').order('created_at', { ascending: false }).limit(4);
+        q = applyDateFilter(q, dateRange);
+        const { data } = await q;
         activityData.push(...(data || []).map(r => ({ ...r, _type: 'report' })));
       }
       if (dataType !== 'reports') {
-        const { data } = await supabase.from('emergencies').select('*').order('created_at', { ascending: false }).limit(4);
+        let q = supabase.from('emergencies').select('*').order('created_at', { ascending: false }).limit(4);
+        q = applyDateFilter(q, dateRange);
+        const { data } = await q;
         activityData.push(...(data || []).map(e => ({ ...e, _type: 'emergency', title: e.type + ' Emergency' })));
       }
       activityData.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
       setRecentActivity(activityData.slice(0, 8));
 
+      // ── Map data with date filter ─────────────────────────────────────────
       let mapItems = [];
       if (dataType !== 'emergencies') {
         let q = supabase.from('reports').select('*').limit(50);
         if (filterStatus   !== 'all') q = q.eq('status',   filterStatus);
         if (filterPriority !== 'all') q = q.eq('priority', filterPriority);
+        q = applyDateFilter(q, dateRange);
         const { data } = await q;
         mapItems.push(...(data || []));
       }
       if (dataType !== 'reports') {
         let q = supabase.from('emergencies').select('*').limit(50);
         if (filterStatus !== 'all') q = q.eq('status', filterStatus);
+        q = applyDateFilter(q, dateRange);
         const { data } = await q;
         mapItems.push(...(data || []));
       }
       setMapData(mapItems);
 
+      // ── Notifications (always latest, no date filter) ─────────────────────
       const urgentNotifs = [];
       const { data: uR } = await supabase.from('reports').select('*').eq('priority', 'urgent').eq('status', 'pending').order('created_at', { ascending: false }).limit(3);
       urgentNotifs.push(...(uR || []).map(r => ({ ...r, _type: 'report' })));
@@ -732,7 +901,7 @@ export default function Dashboard() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'emergencies' }, fetchData)
       .subscribe();
     return () => sub.unsubscribe();
-  }, [filterStatus, filterPriority, dataType]);
+  }, [filterStatus, filterPriority, dataType, datePreset, customFrom, customTo]);
 
   useEffect(() => {
     const reportId = searchParams.get('reportId');
@@ -767,6 +936,11 @@ export default function Dashboard() {
     { label: 'Today',             value: stats.todayReports + stats.todayEmergencies,       icon: TrendingUp,  color: 'text-blue-600'   },
   ];
 
+  // Active date filter label for the stats section
+  const activeDateLabel = datePreset !== 'all'
+    ? DATE_PRESETS.find(p => p.key === datePreset)?.label || 'Filtered'
+    : null;
+
   return (
     <div className="p-6 space-y-6 min-h-screen bg-slate-50">
 
@@ -780,9 +954,23 @@ export default function Dashboard() {
           <p className="text-sm text-slate-500 mt-0.5 flex items-center gap-1.5">
             <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
             Real-time monitoring · Quezon City
+            {activeDateLabel && (
+              <span className="ml-1 px-2 py-0.5 bg-slate-700 text-white rounded text-xs font-bold">
+                {activeDateLabel}
+              </span>
+            )}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          {/* ── Date Filter ── */}
+          <DateFilterPanel
+            datePreset={datePreset}
+            setDatePreset={setDatePreset}
+            customFrom={customFrom}
+            setCustomFrom={setCustomFrom}
+            customTo={customTo}
+            setCustomTo={setCustomTo}
+          />
           <button
             onClick={fetchData}
             disabled={loading}
@@ -899,9 +1087,27 @@ export default function Dashboard() {
                 <option value="high">High</option>
                 <option value="urgent">Urgent / Critical</option>
               </select>
-              <span className="text-xs text-slate-400 ml-auto">
-                <strong className="text-slate-600">{mapData.length}</strong> items on map
-              </span>
+
+              {/* ── Inline date filter pill (mirrors the header one) ── */}
+              <div className="ml-auto flex items-center gap-2">
+                {datePreset !== 'all' && (
+                  <span className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-700 text-white rounded text-xs font-semibold">
+                    <CalendarDays className="w-3 h-3" />
+                    {datePreset === 'custom' && customFrom && customTo
+                      ? `${customFrom.slice(0, 10)} → ${customTo.slice(0, 10)}`
+                      : DATE_PRESETS.find(p => p.key === datePreset)?.label}
+                    <button
+                      onClick={() => { setDatePreset('all'); setCustomFrom(''); setCustomTo(''); }}
+                      className="ml-1 hover:text-red-300 transition-colors"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                )}
+                <span className="text-xs text-slate-400">
+                  <strong className="text-slate-600">{mapData.length}</strong> items on map
+                </span>
+              </div>
             </div>
           </div>
 
@@ -979,6 +1185,11 @@ export default function Dashboard() {
             <div className="bg-slate-50 border-b border-slate-200 px-4 py-2.5 flex items-center justify-between">
               <p className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center gap-2">
                 <Clock className="w-3.5 h-3.5" />Recent Activity
+                {activeDateLabel && (
+                  <span className="ml-1 px-1.5 py-0.5 bg-slate-200 text-slate-600 rounded text-[10px] font-bold">
+                    {activeDateLabel}
+                  </span>
+                )}
               </p>
               <button onClick={() => navigate('/reports')} className="text-xs text-slate-500 hover:text-slate-800 font-semibold flex items-center gap-1 transition-colors">
                 View All <ChevronRight className="w-3 h-3" />
@@ -990,7 +1201,9 @@ export default function Dashboard() {
                   <div className="w-5 h-5 border-2 border-slate-200 border-t-slate-600 rounded-full animate-spin"></div>
                 </div>
               ) : recentActivity.length === 0 ? (
-                <div className="text-center py-10 text-slate-400 text-sm">No recent activity</div>
+                <div className="text-center py-10 text-slate-400 text-sm">
+                  {datePreset !== 'all' ? `No activity for ${activeDateLabel?.toLowerCase()}` : 'No recent activity'}
+                </div>
               ) : recentActivity.map(activity => (
                 <div
                   key={activity.id}

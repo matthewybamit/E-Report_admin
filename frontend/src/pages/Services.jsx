@@ -658,11 +658,12 @@ export default function Services() {
       }
 
       // Auto-generate DOCX when approving
-      if (
-        updates.status === "approved" &&
-        original?.status !== "approved" &&
-        hasDocxTemplate(original?.service_type)
-      ) {
+ if (
+  updates.status === "approved" &&
+  original?.status !== "approved" &&
+  hasDocxTemplate(original?.service_type) &&
+  original?.service_type !== "barangay_id"
+) {
         try {
           const images = await loadHeaderImages();
           await generateCertificate({ ...original, ...updates }, images);

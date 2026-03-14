@@ -700,7 +700,7 @@ export default function AdminLayout() {
     { icon: BarChart3,     label: 'Analytics',    path: '/analytics',     description: 'Insights'         },
     { icon: Shield,        label: 'Audit Logs',   path: '/audit-logs',    description: 'Track actions',   sysAdminOnly: true },
     { icon: UserCog,       label: 'Admin Users',  path: '/admin-users',   description: 'Manage admins',   sysAdminOnly: true },
-    { icon: Settings,      label: 'Settings',     path: '/settings',      description: 'Configure'        },
+    // { icon: Settings,      label: 'Settings',     path: '/settings',      description: 'Configure'        },
   ];
 
   const navItems          = ALL_NAV_ITEMS.filter(item => !item.sysAdminOnly || isSysAdmin);
