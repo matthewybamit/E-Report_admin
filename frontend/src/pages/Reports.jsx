@@ -1,4 +1,4 @@
-// src/pages/Reports.jsx — COMPLETE FIXED VERSION
+// src/pages/Reports.jsx
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../config/supabase';
 import Groq from 'groq-sdk';
@@ -10,16 +10,7 @@ import {
   Flag, Clock3, Users, BarChart2,
 } from 'lucide-react';
 import { logAuditAction } from '../utils/auditLogger';
-
-// ❌ REMOVED: All static Leaflet imports and top-level L usage are gone
-// import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
-// import 'leaflet/dist/leaflet.css';
-// import L from 'leaflet';
-// delete L.Icon.Default.prototype._getIconUrl; ← was crashing the whole app
-// L.Icon.Default.mergeOptions({ ... });
-// const responderIcon = new L.Icon({ ... });
-// const destinationIcon = new L.Icon({ ... });
-// function MapUpdater(...) { ... }  ← also removed from top level
+import UserActionModal from '../components/UserActionModal';
 
 const groq = new Groq({
   apiKey: import.meta.env.VITE_GROQ_API_KEY,
@@ -267,13 +258,12 @@ function AIAssessmentPanel({ aiData, onAccept, onDismiss, accepting, scanning, o
   );
 }
 
-// ─── Track Responder Modal (dynamic Leaflet — never crashes the page) ─────────
+// ─── Track Responder Modal ────────────────────────────────────────────────────
 function TrackResponderModal({ report, responder, onClose }) {
   const [responderLocation, setResponderLocation] = useState(null);
   const [responderStatus,   setResponderStatus]   = useState(null);
   const [loading,           setLoading]           = useState(true);
   const [distance,          setDistance]          = useState(null);
-  // ✅ Leaflet loaded dynamically so it NEVER blocks page render
   const [leaflet,           setLeaflet]           = useState(null);
 
   const responderId = responder?.id;
@@ -292,7 +282,6 @@ function TrackResponderModal({ report, responder, onClose }) {
     setDistance((R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))).toFixed(2));
   }, []);
 
-  // ✅ Load Leaflet dynamically on mount
   useEffect(() => {
     Promise.all([
       import('leaflet'),
@@ -393,7 +382,6 @@ function TrackResponderModal({ report, responder, onClose }) {
   const curStep     = steps.indexOf(responderStatus);
   const teamCfg     = getTeamConfig(responder?.team || 'bpso');
 
-  // ✅ renderMap: only runs after Leaflet has loaded dynamically
   const renderMap = () => {
     if (!leaflet) {
       return (
@@ -511,7 +499,6 @@ function TrackResponderModal({ report, responder, onClose }) {
                 ))}
               </div>
 
-              {/* ✅ Map rendered via renderMap() — safe, dynamic, never crashes */}
               <div className="border border-slate-200 rounded overflow-hidden h-80">
                 {renderMap()}
               </div>
@@ -565,7 +552,7 @@ function TrackResponderModal({ report, responder, onClose }) {
   );
 }
 
-// ─── Deploy Team Modal — 3-step: Team → Lead Picker → Confirm ─────────────────
+// ─── Deploy Team Modal ────────────────────────────────────────────────────────
 function DeployTeamModal({ report, responders, onClose, onDeploy, aiSuggestedTeam }) {
   const [selectedTeam,   setSelectedTeam]   = useState(aiSuggestedTeam || null);
   const [step,           setStep]           = useState(1);
@@ -590,7 +577,6 @@ function DeployTeamModal({ report, responders, onClose, onDeploy, aiSuggestedTea
     setDeploying(false);
   };
 
-  // Step 1: Team selection
   if (step === 1) return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-lg shadow-2xl max-w-lg w-full border border-slate-200 overflow-hidden">
@@ -648,7 +634,6 @@ function DeployTeamModal({ report, responders, onClose, onDeploy, aiSuggestedTea
     </div>
   );
 
-  // Step 2: Pick lead responder
   if (step === 2) return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-lg shadow-2xl max-w-lg w-full border border-slate-200 overflow-hidden">
@@ -715,7 +700,6 @@ function DeployTeamModal({ report, responders, onClose, onDeploy, aiSuggestedTea
     </div>
   );
 
-  // Step 3: Final confirmation
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-lg shadow-2xl max-w-md w-full border border-slate-200 overflow-hidden">
@@ -789,7 +773,7 @@ function DeployTeamModal({ report, responders, onClose, onDeploy, aiSuggestedTea
 }
 
 // ─── Report Card ──────────────────────────────────────────────────────────────
-function ReportCard({ report, onView, onEdit, onDelete, canEdit, aiInsights, onTrackResponder }) {
+function ReportCard({ report, onView, onEdit, onDelete, canEdit, aiInsights, onTrackResponder, onUserAction }) {
   const categoryIcons = {
     infrastructure: { icon: Wrench,        label: 'Infrastructure' },
     health:         { icon: Heart,         label: 'Health'         },
@@ -880,6 +864,22 @@ function ReportCard({ report, onView, onEdit, onDelete, canEdit, aiInsights, onT
           {canEdit && (
             <>
               <button onClick={() => onEdit(report)} className="p-2 text-slate-500 bg-slate-100 rounded hover:bg-slate-200 transition-colors" title="Edit"><Edit3 className="w-3.5 h-3.5" /></button>
+              <button
+                onClick={e => {
+                  e.stopPropagation();
+                  onUserAction({
+                    id:             report.reporter_id,
+                    email:          report.reporter_email,
+                    full_name:      report.reporter_name,
+                    phone:          report.reporter_phone,
+                    account_status: 'active',
+                  });
+                }}
+                className="p-2 text-amber-600 bg-amber-50 rounded hover:bg-amber-100 transition-colors"
+                title="Flag / Suspend Reporter"
+              >
+                <Flag className="w-3.5 h-3.5" />
+              </button>
               <button onClick={() => onDelete(report)} className="p-2 text-red-500 bg-red-50 rounded hover:bg-red-100 transition-colors" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
             </>
           )}
@@ -890,7 +890,7 @@ function ReportCard({ report, onView, onEdit, onDelete, canEdit, aiInsights, onT
 }
 
 // ─── View Report Modal ────────────────────────────────────────────────────────
-function ViewReportModal({ report, onClose, onEditStatus, canEdit, onDeployResponder, onRunAssessment, scanning, aiData, onAcceptAI, acceptingAI, onDismissAI }) {
+function ViewReportModal({ report, onClose, onEditStatus, canEdit, onDeployResponder, onRunAssessment, scanning, aiData, onAcceptAI, acceptingAI, onDismissAI, onUserAction }) {
   const [isImageZoomed,  setIsImageZoomed]  = useState(false);
   const [zoomedImageUrl, setZoomedImageUrl] = useState(null);
 
@@ -942,8 +942,22 @@ function ViewReportModal({ report, onClose, onEditStatus, canEdit, onDeployRespo
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <div className="border border-slate-200 rounded-lg overflow-hidden">
-              <div className="bg-slate-50 border-b border-slate-200 px-4 py-2.5">
+              <div className="bg-slate-50 border-b border-slate-200 px-4 py-2.5 flex items-center justify-between">
                 <p className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center gap-2"><User className="w-3.5 h-3.5" />Reporter Information</p>
+                {canEdit && (
+                  <button
+                    onClick={() => onUserAction({
+                      id:             report.reporter_id,
+                      email:          report.reporter_email,
+                      full_name:      report.reporter_name,
+                      phone:          report.reporter_phone,
+                      account_status: 'active',
+                    })}
+                    className="flex items-center gap-1 px-2 py-1 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded hover:bg-amber-100 transition-colors"
+                  >
+                    <Flag className="w-3 h-3" /> Flag User
+                  </button>
+                )}
               </div>
               <div className="p-4 space-y-3">
                 <div><p className="text-xs text-slate-400 uppercase tracking-wide font-semibold mb-0.5">Full Name</p><p className="text-sm font-semibold text-slate-800">{report.reporter_name}</p></div>
@@ -1037,6 +1051,20 @@ function ViewReportModal({ report, onClose, onEditStatus, canEdit, onDeployRespo
 
         <div className="sticky bottom-0 bg-slate-50 border-t border-slate-200 px-6 py-4 flex gap-3 flex-wrap rounded-b-lg">
           <button onClick={onClose} className="px-4 py-2 text-sm font-semibold text-slate-700 bg-white border border-slate-300 rounded hover:bg-slate-50 transition-colors">Close</button>
+          {canEdit && (
+            <button
+              onClick={() => onUserAction({
+                id:             report.reporter_id,
+                email:          report.reporter_email,
+                full_name:      report.reporter_name,
+                phone:          report.reporter_phone,
+                account_status: 'active',
+              })}
+              className="flex items-center gap-2 px-4 py-2 border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 text-sm font-semibold rounded transition-colors"
+            >
+              <Flag className="w-4 h-4" /> Flag / Suspend Reporter
+            </button>
+          )}
           {canEdit && report.status === 'pending' && (
             <button onClick={() => onDeployResponder(report)}
               className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-800 text-white text-sm font-semibold rounded transition-colors">
@@ -1147,6 +1175,7 @@ export default function Reports() {
   const [aiDataMap,         setAiDataMap]         = useState({});
   const [scanningId,        setScanningId]        = useState(null);
   const [acceptingAI,       setAcceptingAI]       = useState(false);
+  const [userActionModal,   setUserActionModal]   = useState(null); // ← NEW
 
   useEffect(() => { fetchReports(); fetchResponders(); checkUserRole(); }, []);
   useEffect(() => { filterReports(); }, [reports, searchQuery, statusFilter, priorityFilter]);
@@ -1193,82 +1222,72 @@ export default function Reports() {
     }
   };
 
- const handleRunAssessment = async (report) => {
-  setScanningId(report.id);
-  try {
-    // ✅ Get real session token for Edge Function auth
-    const { data: { session } } = await supabase.auth.getSession();
+  // ← NEW: open user action modal
+  const handleOpenUserAction = (user) => {
+    if (!user) return;
+    setUserActionModal(user);
+  };
 
-    const [aiResult, fraudResult] = await Promise.all([
-      analyzeReportWithAI({
-        category:    report.category,
-        title:       report.title,
-        description: report.description,
-        location:    report.location,
-      }),
-      fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/check-report-evidence`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey':        import.meta.env.VITE_SUPABASE_ANON_KEY,
-          // ✅ Use real session token, not anon key
-          'Authorization': `Bearer ${session?.access_token ?? import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-        },
-        // ✅ FIXED: wrap report in { report } — Edge Function expects this shape
-        body: JSON.stringify({ report }),
-      })
-        .then(async (res) => {
-          const text = await res.text();
-          console.log('Fraud raw response:', text);
-          try {
-            return JSON.parse(text);
-          } catch {
-            console.error('Fraud JSON parse failed:', text);
-            return null;
-          }
-        })
-        .catch((err) => {
-          console.error('Fraud fetch error:', err);
-          return null;
+  const handleRunAssessment = async (report) => {
+    setScanningId(report.id);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+
+      const [aiResult, fraudResult] = await Promise.all([
+        analyzeReportWithAI({
+          category:    report.category,
+          title:       report.title,
+          description: report.description,
+          location:    report.location,
         }),
-    ]);
+        fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/check-report-evidence`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey':        import.meta.env.VITE_SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${session?.access_token ?? import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({ report }),
+        })
+          .then(async (res) => {
+            const text = await res.text();
+            try { return JSON.parse(text); } catch { return null; }
+          })
+          .catch(() => null),
+      ]);
 
-    console.log('AI result:', aiResult);
-    console.log('Fraud result:', fraudResult);
+      const merged = { ...aiResult, fraud: fraudResult || null };
+      setAiDataMap(prev => ({ ...prev, [report.id]: merged }));
 
-    const merged = { ...aiResult, fraud: fraudResult || null };
-    setAiDataMap(prev => ({ ...prev, [report.id]: merged }));
+      setReports(prev => prev.map(r => r.id === report.id ? {
+        ...r,
+        ai_verdict: fraudResult?.verdict      ?? r.ai_verdict,
+        ai_score:   fraudResult?.score        ?? r.ai_score,
+        ai_notes:   fraudResult?.explanation  ?? r.ai_notes,
+      } : r));
 
-    setReports(prev => prev.map(r => r.id === report.id ? {
-      ...r,
-      ai_verdict: fraudResult?.verdict      ?? r.ai_verdict,
-      ai_score:   fraudResult?.score        ?? r.ai_score,
-      ai_notes:   fraudResult?.explanation  ?? r.ai_notes,
-    } : r));
+      if (selectedReport?.id === report.id) {
+        setSelectedReport(prev => ({
+          ...prev,
+          ai_verdict: fraudResult?.verdict      ?? prev.ai_verdict,
+          ai_score:   fraudResult?.score        ?? prev.ai_score,
+          ai_notes:   fraudResult?.explanation  ?? prev.ai_notes,
+        }));
+      }
 
-    if (selectedReport?.id === report.id) {
-      setSelectedReport(prev => ({
-        ...prev,
-        ai_verdict: fraudResult?.verdict      ?? prev.ai_verdict,
-        ai_score:   fraudResult?.score        ?? prev.ai_score,
-        ai_notes:   fraudResult?.explanation  ?? prev.ai_notes,
-      }));
+      await logAuditAction({
+        action:      'scan',
+        actionType:  'report',
+        description: `AI full assessment on ${report.report_number}`,
+        severity:    'info',
+        targetId:    report.id,
+      });
+    } catch (err) {
+      console.error('Assessment error:', err);
+    } finally {
+      setScanningId(null);
     }
-
-    await logAuditAction({
-      action:      'scan',
-      actionType:  'report',
-      description: `AI full assessment on ${report.report_number}`,
-      severity:    'info',
-      targetId:    report.id,
-    });
-
-  } catch (err) {
-    console.error('Assessment error:', err);
-  } finally {
-    setScanningId(null);
-  }
-};
+  };
 
   const handleAcceptAI = async (reportId) => {
     const ai = aiDataMap[reportId];
@@ -1333,10 +1352,10 @@ export default function Reports() {
       await supabase
         .from('reports')
         .update({
-          status:               'in-progress',
-          assigned_to:          `${teamData.label}: ${memberNames}`,
+          status:                'in-progress',
+          assigned_to:           `${teamData.label}: ${memberNames}`,
           assigned_responder_id: leadResponderId,
-          responder_status:     'assigned',
+          responder_status:      'assigned',
         })
         .eq('id', selectedReport.id);
 
@@ -1357,7 +1376,7 @@ export default function Reports() {
           },
         });
       } catch (auditErr) {
-        console.error('⚠️ Audit log failed for deploy:', auditErr);
+        console.error('Audit log failed for deploy:', auditErr);
       }
 
       setDeployModalOpen(false);
@@ -1502,6 +1521,7 @@ export default function Reports() {
               canEdit={canEdit}
               aiInsights={aiDataMap[report.id]}
               onTrackResponder={handleTrackResponder}
+              onUserAction={handleOpenUserAction}
             />
           ))}
         </div>
@@ -1521,6 +1541,7 @@ export default function Reports() {
           onAcceptAI={handleAcceptAI}
           acceptingAI={acceptingAI}
           onDismissAI={() => handleDismissAI(selectedReport?.id)}
+          onUserAction={handleOpenUserAction}
         />
       )}
 
@@ -1551,6 +1572,15 @@ export default function Reports() {
             setTrackingReport(null);
             setTrackingResponder(null);
           }}
+        />
+      )}
+
+      {/* ← NEW: User Action Modal */}
+      {userActionModal && (
+        <UserActionModal
+          user={userActionModal}
+          onClose={() => setUserActionModal(null)}
+          onSuccess={fetchReports}
         />
       )}
     </div>

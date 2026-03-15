@@ -4,9 +4,10 @@ import {
   Search, Eye, X, ChevronLeft, ChevronRight, AlertTriangle,
   User, Download, RefreshCw, Phone, Mail, MapPin, Calendar,
   CheckCircle, Shield, Ban, Flag, Clock, Loader2, FileText,
-  XCircle, ZoomIn, IdCard,
+  XCircle, ZoomIn, IdCard, ShieldOff,
 } from 'lucide-react';
 import { supabase } from '../config/supabase';
+import UserActionModal from '../components/UserActionModal';
 
 // ─── Status Badge ─────────────────────────────────────────────────────────────
 function StatusBadge({ status }) {
@@ -17,7 +18,7 @@ function StatusBadge({ status }) {
     pending_approval: { classes: 'bg-purple-50 text-purple-700 border-purple-300', icon: Clock,       label: 'Pending Approval' },
     pending:          { classes: 'bg-purple-50 text-purple-700 border-purple-300', icon: Clock,       label: 'Pending'          },
   };
-  const cfg = map[status] || map.active;
+  const cfg  = map[status] || map.active;
   const Icon = cfg.icon;
   return (
     <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded border text-xs font-bold uppercase tracking-wider ${cfg.classes}`}>
@@ -124,8 +125,7 @@ function RejectionModal({ isOpen, onClose, onConfirm, loading }) {
 }
 
 // ─── View Resident Modal ──────────────────────────────────────────────────────
-// onDone(resetFilters) — pass true to clear filters after approval actions
-function ViewResidentModal({ resident, onClose, onDone }) {
+function ViewResidentModal({ resident, onClose, onDone, onOpenUserAction }) {
   if (!resident) return null;
 
   const [loading,       setLoading]       = useState(false);
@@ -142,13 +142,13 @@ function ViewResidentModal({ resident, onClose, onDone }) {
     return age;
   };
 
-  const accountAge = Math.floor((new Date() - new Date(resident.created_at)) / 86400000);
+  const accountAge         = Math.floor((new Date() - new Date(resident.created_at)) / 86400000);
   const verificationStatus = resident.verification_status || 'unsubmitted';
   const hasPendingID       = verificationStatus === 'pending';
   const isPendingApproval  = resident.account_status === 'pending_approval';
   const needsAction        = isPendingApproval || hasPendingID;
 
-  // ── ONE approval action: approves ID + activates account simultaneously ──
+  // ── Approve ID + activate account simultaneously ──────────────────────────
   const approveAndActivate = async () => {
     if (!confirm('Approve this registration? The resident\'s ID will be verified and their account activated.')) return;
     setLoading(true);
@@ -156,8 +156,8 @@ function ViewResidentModal({ resident, onClose, onDone }) {
       const { error } = await supabase
         .from('users')
         .update({
-          account_status:      'active',        // ← unblocks login
-          verification_status: 'approved',      // ← ID approved
+          account_status:      'active',
+          verification_status: 'approved',
           is_verified:         true,
           verified_at:         new Date().toISOString(),
           rejection_reason:    null,
@@ -165,7 +165,7 @@ function ViewResidentModal({ resident, onClose, onDone }) {
         })
         .eq('id', resident.id);
       if (error) throw error;
-      onDone(true); // true = reset filters so they can see the now-active resident
+      onDone(true);
       onClose();
     } catch {
       alert('Failed to approve registration');
@@ -174,14 +174,14 @@ function ViewResidentModal({ resident, onClose, onDone }) {
     }
   };
 
-  // ── Reject: keeps account blocked, records reason ──
+  // ── Reject: blocks account, records reason ────────────────────────────────
   const rejectRegistration = async (reason) => {
     setLoading(true);
     try {
       const { error } = await supabase
         .from('users')
         .update({
-          account_status:      'suspended',     // ← blocks login permanently
+          account_status:      'suspended',
           verification_status: 'rejected',
           is_verified:         false,
           rejection_reason:    reason,
@@ -194,30 +194,6 @@ function ViewResidentModal({ resident, onClose, onDone }) {
       onClose();
     } catch {
       alert('Failed to reject registration');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // ── Account management for already-active residents ──
-  const updateStatus = async (newStatus) => {
-    const msgs = {
-      flagged:   'Flag this account for review?',
-      suspended: 'Suspend this account? The user will lose access.',
-      active:    'Restore this account to active status?',
-    };
-    if (!confirm(msgs[newStatus])) return;
-    setLoading(true);
-    try {
-      const { error } = await supabase
-        .from('users')
-        .update({ account_status: newStatus, updated_at: new Date().toISOString() })
-        .eq('id', resident.id);
-      if (error) throw error;
-      onDone(false); // false = keep current filters
-      onClose();
-    } catch {
-      alert('Failed to update account status');
     } finally {
       setLoading(false);
     }
@@ -249,9 +225,8 @@ function ViewResidentModal({ resident, onClose, onDone }) {
           {/* Tabs */}
           <div className="flex gap-1 bg-slate-100 border-b border-slate-200 px-4 py-2">
             {[
-              { id: 'profile', label: 'Profile Info',    icon: User   },
-              { id: 'id',      label: 'ID & Approval',   icon: IdCard,
-                badge: needsAction ? '!' : null },
+              { id: 'profile', label: 'Profile Info',  icon: User   },
+              { id: 'id',      label: 'ID & Approval', icon: IdCard, badge: needsAction ? '!' : null },
             ].map(({ id, label, icon: Icon, badge }) => (
               <button key={id} onClick={() => setActiveTab(id)}
                 className={`flex items-center gap-2 px-4 py-2 rounded text-xs font-bold uppercase tracking-wider transition-all ${
@@ -280,7 +255,6 @@ function ViewResidentModal({ resident, onClose, onDone }) {
                   </span>
                 </div>
 
-                {/* Action nudge for pending */}
                 {needsAction && (
                   <div className="flex items-start gap-3 bg-amber-50 border border-amber-300 rounded-lg p-3.5">
                     <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
@@ -294,6 +268,17 @@ function ViewResidentModal({ resident, onClose, onDone }) {
                       className="text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded flex-shrink-0">
                       Review ID →
                     </button>
+                  </div>
+                )}
+
+                {/* Admin action notes banner — shown when a flag/suspend/ban has been applied */}
+                {resident.admin_action_notes && (
+                  <div className="flex items-start gap-3 bg-slate-50 border border-slate-300 rounded-lg p-3.5">
+                    <FileText className="w-4 h-4 text-slate-500 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-xs font-bold text-slate-700 uppercase tracking-wide">Admin Enforcement Note</p>
+                      <p className="text-xs text-slate-600 mt-0.5 whitespace-pre-wrap leading-relaxed">{resident.admin_action_notes}</p>
+                    </div>
                   </div>
                 )}
 
@@ -319,8 +304,19 @@ function ViewResidentModal({ resident, onClose, onDone }) {
                   <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-lg p-3.5">
                     <Ban className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
                     <div>
-                      <p className="text-xs font-bold text-red-900 uppercase tracking-wide">Account Suspended</p>
-                      <p className="text-xs text-red-700 mt-0.5">This user cannot access the app.</p>
+                      <p className="text-xs font-bold text-red-900 uppercase tracking-wide">
+                        {resident.is_banned ? 'Account Permanently Banned' : 'Account Suspended'}
+                      </p>
+                      <p className="text-xs text-red-700 mt-0.5">
+                        {resident.is_banned
+                          ? 'This account has been permanently banned and cannot be reinstated via the admin interface.'
+                          : 'This user cannot access the app.'}
+                      </p>
+                      {resident.suspension_expires_at && !resident.is_banned && (
+                        <p className="text-xs text-red-600 mt-1 font-semibold">
+                          Suspension expires: {new Date(resident.suspension_expires_at).toLocaleString()}
+                        </p>
+                      )}
                     </div>
                   </div>
                 )}
@@ -410,7 +406,6 @@ function ViewResidentModal({ resident, onClose, onDone }) {
             {activeTab === 'id' && (
               <div className="space-y-4">
 
-                {/* Status banner */}
                 <div className={`rounded-lg p-4 border-2 flex items-start gap-3 ${
                   verificationStatus === 'pending'     ? 'bg-amber-50 border-amber-300' :
                   verificationStatus === 'approved'    ? 'bg-green-50 border-green-300' :
@@ -439,7 +434,6 @@ function ViewResidentModal({ resident, onClose, onDone }) {
                   </div>
                 </div>
 
-                {/* ID Type */}
                 {resident.id_type && (
                   <div className="border border-slate-200 rounded-lg overflow-hidden">
                     <div className="bg-slate-50 border-b border-slate-200 px-4 py-2.5">
@@ -453,7 +447,6 @@ function ViewResidentModal({ resident, onClose, onDone }) {
                   </div>
                 )}
 
-                {/* ID Photos */}
                 {(resident.id_front_url || resident.id_back_url) ? (
                   <div className="border border-slate-200 rounded-lg overflow-hidden">
                     <div className="bg-slate-50 border-b border-slate-200 px-4 py-2.5">
@@ -492,7 +485,6 @@ function ViewResidentModal({ resident, onClose, onDone }) {
                   </div>
                 )}
 
-                {/* Checklist — only when pending */}
                 {hasPendingID && (
                   <div className="border border-amber-200 rounded-lg overflow-hidden">
                     <div className="bg-amber-50 border-b border-amber-200 px-4 py-2.5">
@@ -525,7 +517,7 @@ function ViewResidentModal({ resident, onClose, onDone }) {
               Close
             </button>
 
-            {/* ── NEW REGISTRATION: single approve/reject on ID tab ── */}
+            {/* ── NEW REGISTRATION: approve/reject on ID tab ── */}
             {activeTab === 'id' && needsAction && (
               <>
                 <button onClick={() => setShowRejection(true)} disabled={loading}
@@ -542,25 +534,60 @@ function ViewResidentModal({ resident, onClose, onDone }) {
               </>
             )}
 
-            {/* ── EXISTING ACTIVE RESIDENTS: account management on profile tab ── */}
+            {/* ── EXISTING ACTIVE RESIDENTS: use UserActionModal for flag/suspend/ban ── */}
             {activeTab === 'profile' && !needsAction && (
               <>
-                {resident.account_status === 'active' && (
-                  <button onClick={() => updateStatus('flagged')} disabled={loading}
-                    className="flex items-center gap-2 px-4 py-2 text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white rounded disabled:opacity-50">
-                    <Flag className="w-3.5 h-3.5" />Flag Account
+                {/* Restore — simple direct update, no modal needed */}
+                {(resident.account_status === 'suspended' || resident.account_status === 'flagged') && !resident.is_banned && (
+                  <button
+                    onClick={async () => {
+                      if (!confirm('Restore this account to active status?')) return;
+                      setLoading(true);
+                      try {
+                        const { error } = await supabase
+                          .from('users')
+                          .update({
+                            account_status:        'active',
+                            suspension_expires_at: null,
+                            admin_action_notes:    null,
+                            updated_at:            new Date().toISOString(),
+                          })
+                          .eq('id', resident.id);
+                        if (error) throw error;
+                        onDone(false);
+                        onClose();
+                      } catch {
+                        alert('Failed to restore account');
+                      } finally {
+                        setLoading(false);
+                      }
+                    }}
+                    disabled={loading}
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2 text-xs font-bold bg-green-600 hover:bg-green-700 text-white rounded disabled:opacity-50"
+                  >
+                    <CheckCircle className="w-3.5 h-3.5" /> Restore Account
                   </button>
                 )}
-                {(resident.account_status === 'active' || resident.account_status === 'flagged') && (
-                  <button onClick={() => updateStatus('suspended')} disabled={loading}
-                    className="flex items-center gap-2 px-4 py-2 text-xs font-bold bg-red-600 hover:bg-red-700 text-white rounded disabled:opacity-50">
-                    <Ban className="w-3.5 h-3.5" />Suspend
+
+                {/* Flag / Suspend / Ban — opens UserActionModal */}
+                {!resident.is_banned && resident.account_status !== 'suspended' && (
+                  <button
+                    onClick={() => onOpenUserAction(resident)}
+                    disabled={loading}
+                    className="flex items-center gap-2 px-4 py-2 text-xs font-bold border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 rounded disabled:opacity-50"
+                  >
+                    <Flag className="w-3.5 h-3.5" /> Flag / Suspend / Ban
                   </button>
                 )}
-                {(resident.account_status === 'suspended' || resident.account_status === 'flagged') && (
-                  <button onClick={() => updateStatus('active')} disabled={loading}
-                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2 text-xs font-bold bg-green-600 hover:bg-green-700 text-white rounded disabled:opacity-50">
-                    <CheckCircle className="w-3.5 h-3.5" />Restore Account
+
+                {/* Direct suspend option when already flagged */}
+                {resident.account_status === 'flagged' && (
+                  <button
+                    onClick={() => onOpenUserAction(resident)}
+                    disabled={loading}
+                    className="flex items-center gap-2 px-4 py-2 text-xs font-bold bg-red-600 hover:bg-red-700 text-white rounded disabled:opacity-50"
+                  >
+                    <ShieldOff className="w-3.5 h-3.5" /> Escalate Action
                   </button>
                 )}
               </>
@@ -586,6 +613,7 @@ export default function Residents() {
   const [loading,          setLoading]          = useState(true);
   const [selectedResident, setSelectedResident] = useState(null);
   const [viewModalOpen,    setViewModalOpen]    = useState(false);
+  const [userActionTarget, setUserActionTarget] = useState(null); // ← NEW
   const [searchTerm,       setSearchTerm]       = useState('');
   const [purokFilter,      setPurokFilter]      = useState('All');
   const [statusFilter,     setStatusFilter]     = useState('All');
@@ -653,14 +681,25 @@ export default function Residents() {
   useEffect(() => { fetchResidents(); }, [searchTerm, purokFilter, statusFilter, verifFilter, currentPage]);
   useEffect(() => { fetchStats(); }, [residents]);
 
-  // Called by modal — resetFilters=true clears pending_approval filter
-  // so the newly approved resident stays visible in the table
   const handleDone = (resetFilters) => {
     if (resetFilters) {
       setStatusFilter('All');
       setVerifFilter('All');
       setCurrentPage(1);
     }
+    fetchResidents();
+    fetchStats();
+  };
+
+  // Opens UserActionModal from ViewResidentModal or from the table directly
+  const handleOpenUserAction = (resident) => {
+    setUserActionTarget(resident);
+    // If called from inside ViewResidentModal, close that first
+    setViewModalOpen(false);
+    setSelectedResident(null);
+  };
+
+  const handleUserActionSuccess = () => {
     fetchResidents();
     fetchStats();
   };
@@ -891,16 +930,28 @@ export default function Residents() {
                           <IDVerificationBadge status={resident.verification_status} />
                         </td>
                         <td className="px-5 py-4 whitespace-nowrap">
-                          <button
-                            onClick={() => { setSelectedResident(resident); setViewModalOpen(true); }}
-                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded border text-xs font-semibold transition-colors ${
-                              needsAction
-                                ? 'bg-amber-500 border-amber-500 text-white hover:bg-amber-600'
-                                : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'
-                            }`}>
-                            <Eye className="w-3.5 h-3.5" />
-                            {needsAction ? 'Review' : 'View'}
-                          </button>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              onClick={() => { setSelectedResident(resident); setViewModalOpen(true); }}
+                              className={`flex items-center gap-1.5 px-3 py-1.5 rounded border text-xs font-semibold transition-colors ${
+                                needsAction
+                                  ? 'bg-amber-500 border-amber-500 text-white hover:bg-amber-600'
+                                  : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'
+                              }`}>
+                              <Eye className="w-3.5 h-3.5" />
+                              {needsAction ? 'Review' : 'View'}
+                            </button>
+                            {/* Quick flag button directly in table — only for active/flagged residents */}
+                            {!needsAction && resident.account_status !== 'suspended' && (
+                              <button
+                                onClick={() => handleOpenUserAction(resident)}
+                                className="p-1.5 text-amber-600 bg-amber-50 border border-amber-200 rounded hover:bg-amber-100 transition-colors"
+                                title="Flag / Suspend / Ban"
+                              >
+                                <Flag className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );
@@ -935,11 +986,22 @@ export default function Residents() {
         )}
       </div>
 
+      {/* Modals */}
       {viewModalOpen && (
         <ViewResidentModal
           resident={selectedResident}
           onClose={() => { setViewModalOpen(false); setSelectedResident(null); }}
           onDone={handleDone}
+          onOpenUserAction={handleOpenUserAction}
+        />
+      )}
+
+      {/* UserActionModal — shown when opened from table OR from ViewResidentModal */}
+      {userActionTarget && (
+        <UserActionModal
+          user={userActionTarget}
+          onClose={() => setUserActionTarget(null)}
+          onSuccess={handleUserActionSuccess}
         />
       )}
     </div>

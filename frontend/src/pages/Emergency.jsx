@@ -3,12 +3,13 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../config/supabase';
 import { logAuditAction } from '../utils/auditLogger';
 import CallModal from '../components/CallModal';
+import UserActionModal from '../components/UserActionModal';
 import {
   AlertTriangle, Phone, MapPin, Clock, X, CheckCircle,
   Navigation, Ambulance, Flame, Shield, Zap, MessageSquare,
   Eye, RefreshCw, Filter, ArrowRight, FileText, Radio,
   Users, BanIcon, Send, Bot, Loader,
-  User, Mail, ShieldAlert,
+  User, Mail, ShieldAlert, Flag,
 } from 'lucide-react';
 
 // ─── Team Definitions ─────────────────────────────────────────────────────────
@@ -23,7 +24,6 @@ const getTeamConfig = (team) => RESPONSE_TEAMS.find(t => t.value === team) ?? RE
 const suggestTeam   = (type) => ({ Medical: 'bhert', Fire: 'disaster', Crime: 'bpso', Accident: 'disaster' }[type] ?? 'general');
 
 // ─── Reporter helpers ─────────────────────────────────────────────────────────
-/** Resolves the best display name from a users row. */
 function resolveReporterName(user) {
   if (!user) return 'Anonymous';
   return (
@@ -34,7 +34,6 @@ function resolveReporterName(user) {
   );
 }
 
-/** Small circular avatar — initials fallback if no avatar_url. */
 function ReporterAvatar({ user, size = 'sm' }) {
   const dim = size === 'sm' ? 'w-6 h-6 text-xs' : 'w-10 h-10 text-sm';
   const initials = user?.full_name
@@ -57,8 +56,7 @@ function ReporterAvatar({ user, size = 'sm' }) {
   );
 }
 
-/** Full reporter card used inside the detail modal. */
-function ReporterPanel({ user, onCallUser, emergency, isCancelled }) {
+function ReporterPanel({ user, onCallUser, emergency, isCancelled, onUserAction }) {
   if (!user) {
     return (
       <div className="border border-slate-200 rounded-lg overflow-hidden">
@@ -83,15 +81,16 @@ function ReporterPanel({ user, onCallUser, emergency, isCancelled }) {
         <p className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center gap-2">
           <User className="w-3.5 h-3.5" /> Reporter
         </p>
-        {user.verification_status === 'approved' && (
-          <span className="inline-flex items-center gap-1 text-xs font-semibold text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded">
-            <CheckCircle className="w-3 h-3" /> Verified Resident
-          </span>
-        )}
+        <div className="flex items-center gap-2">
+          {user.verification_status === 'approved' && (
+            <span className="inline-flex items-center gap-1 text-xs font-semibold text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded">
+              <CheckCircle className="w-3 h-3" /> Verified Resident
+            </span>
+          )}
+        </div>
       </div>
 
       <div className="p-4">
-        {/* Identity row */}
         <div className="flex items-center gap-3 mb-3">
           <ReporterAvatar user={user} size="lg" />
           <div>
@@ -100,7 +99,6 @@ function ReporterPanel({ user, onCallUser, emergency, isCancelled }) {
           </div>
         </div>
 
-        {/* Contact grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
           {user.phone && (
             <div>
@@ -129,15 +127,25 @@ function ReporterPanel({ user, onCallUser, emergency, isCancelled }) {
           )}
         </div>
 
-        {/* Call reporter button */}
-        {!isCancelled && user.phone && (
-          <button
-            onClick={() => onCallUser(emergency)}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-slate-700 hover:bg-slate-800 text-white text-xs font-semibold rounded transition-colors"
-          >
-            <Phone className="w-3.5 h-3.5" /> Call Reporter — {user.phone}
-          </button>
-        )}
+        <div className="flex flex-col gap-2">
+          {!isCancelled && user.phone && (
+            <button
+              onClick={() => onCallUser(emergency)}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-slate-700 hover:bg-slate-800 text-white text-xs font-semibold rounded transition-colors"
+            >
+              <Phone className="w-3.5 h-3.5" /> Call Reporter — {user.phone}
+            </button>
+          )}
+          {/* ← NEW: Flag / Suspend / Ban button */}
+          {onUserAction && (
+            <button
+              onClick={() => onUserAction(user)}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 text-xs font-semibold rounded transition-colors"
+            >
+              <Flag className="w-3.5 h-3.5" /> Flag / Suspend / Ban Account
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -197,7 +205,6 @@ function StatusBadge({ status }) {
     </span>
   );
 }
-
 
 // ─── Track Responder Modal ────────────────────────────────────────────────────
 function TrackResponderModal({ emergency, responder, onClose }) {
@@ -464,7 +471,6 @@ function TrackResponderModal({ emergency, responder, onClose }) {
   );
 }
 
-
 // ─── Dispatch Modal (3-step) ──────────────────────────────────────────────────
 function DispatchModal({ isOpen, onClose, onDispatch, responders, emergencyType }) {
   const [selectedTeam,   setSelectedTeam]   = useState(() => suggestTeam(emergencyType));
@@ -715,13 +721,11 @@ function DispatchModal({ isOpen, onClose, onDispatch, responders, emergencyType 
   );
 }
 
-
 // ─── Emergency Detail Modal ───────────────────────────────────────────────────
-function EmergencyDetailModal({ emergency, onClose, onOpenDispatch, onResolve, onCallUser, onTrackResponder }) {
+function EmergencyDetailModal({ emergency, onClose, onOpenDispatch, onResolve, onCallUser, onTrackResponder, onUserAction }) {
   if (!emergency) return null;
   const isCancelled = emergency.status === 'cancelled';
-  // users row is attached from fetchData
-  const reporter = emergency.users ?? null;
+  const reporter    = emergency.users ?? null;
 
   const timeAgo = (date) => {
     const minutes = Math.floor((new Date() - new Date(date)) / 60000);
@@ -734,7 +738,6 @@ function EmergencyDetailModal({ emergency, onClose, onOpenDispatch, onResolve, o
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className={`bg-white rounded-lg shadow-2xl max-w-2xl w-full max-h-[92vh] overflow-y-auto border ${isCancelled ? 'border-slate-300 opacity-90' : 'border-slate-200'}`}>
 
-        {/* Header */}
         <div className={`sticky top-0 ${isCancelled ? 'bg-slate-600' : 'bg-slate-800'} px-6 py-4 z-10 rounded-t-lg flex items-start justify-between`}>
           <div className="flex-1 min-w-0 pr-4">
             <span className="text-xs text-slate-400 font-mono uppercase tracking-widest">REF {emergency.id.slice(0, 8).toUpperCase()}</span>
@@ -748,7 +751,6 @@ function EmergencyDetailModal({ emergency, onClose, onOpenDispatch, onResolve, o
               <span className="inline-flex items-center gap-1 text-xs text-slate-400 bg-slate-700 px-2 py-1 rounded border border-slate-600">
                 <Clock className="w-3 h-3" /> {timeAgo(emergency.created_at)}
               </span>
-              {/* reporter quick-pill in the header */}
               {reporter && (
                 <span className="inline-flex items-center gap-1.5 text-xs text-slate-300 bg-slate-700 px-2 py-1 rounded border border-slate-600">
                   <ReporterAvatar user={reporter} size="sm" />
@@ -772,16 +774,14 @@ function EmergencyDetailModal({ emergency, onClose, onOpenDispatch, onResolve, o
         )}
 
         <div className="p-6 space-y-4">
-
-          {/* Reporter panel — first section in the body */}
           <ReporterPanel
             user={reporter}
             onCallUser={onCallUser}
             emergency={emergency}
             isCancelled={isCancelled}
+            onUserAction={onUserAction}
           />
 
-          {/* Incident Classification */}
           <div className="border border-slate-200 rounded-lg overflow-hidden">
             <div className="bg-slate-50 border-b border-slate-200 px-4 py-2.5">
               <p className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center gap-2">
@@ -807,7 +807,6 @@ function EmergencyDetailModal({ emergency, onClose, onOpenDispatch, onResolve, o
             </div>
           </div>
 
-          {/* Description */}
           <div className="border border-slate-200 rounded-lg overflow-hidden">
             <div className="bg-slate-50 border-b border-slate-200 px-4 py-2.5">
               <p className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center gap-2">
@@ -819,7 +818,6 @@ function EmergencyDetailModal({ emergency, onClose, onOpenDispatch, onResolve, o
             </div>
           </div>
 
-          {/* Location */}
           <div className="border border-slate-200 rounded-lg overflow-hidden">
             <div className="bg-slate-50 border-b border-slate-200 px-4 py-2.5">
               <p className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center gap-2">
@@ -837,7 +835,6 @@ function EmergencyDetailModal({ emergency, onClose, onOpenDispatch, onResolve, o
                 >
                   <Navigation className="w-3.5 h-3.5" /> Open in Maps
                 </a>
-                {/* Call button kept here as a secondary shortcut if reporter has no phone in panel */}
                 {!isCancelled && !reporter?.phone && (
                   <button
                     onClick={() => onCallUser(emergency)}
@@ -850,7 +847,6 @@ function EmergencyDetailModal({ emergency, onClose, onOpenDispatch, onResolve, o
             </div>
           </div>
 
-          {/* Dispatched Team Info */}
           {emergency.status === 'dispatched' && emergency.assigned_team && (
             <div className="border border-blue-200 rounded-lg overflow-hidden">
               <div className="bg-blue-50 border-b border-blue-200 px-4 py-2.5 flex items-center justify-between">
@@ -879,11 +875,18 @@ function EmergencyDetailModal({ emergency, onClose, onOpenDispatch, onResolve, o
           )}
         </div>
 
-        {/* Footer Actions */}
-        <div className="sticky bottom-0 bg-slate-50 border-t border-slate-200 px-6 py-4 flex gap-3 rounded-b-lg">
+        <div className="sticky bottom-0 bg-slate-50 border-t border-slate-200 px-6 py-4 flex gap-3 rounded-b-lg flex-wrap">
           <button onClick={onClose} className="px-4 py-2 text-sm font-semibold text-slate-700 bg-white border border-slate-300 rounded hover:bg-slate-50 transition-colors">
             Close
           </button>
+          {reporter && onUserAction && (
+            <button
+              onClick={() => onUserAction(reporter)}
+              className="flex items-center gap-2 px-4 py-2 border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 text-sm font-semibold rounded transition-colors"
+            >
+              <Flag className="w-4 h-4" /> Flag / Suspend Reporter
+            </button>
+          )}
           {emergency.status === 'pending' && !isCancelled && (
             <button
               onClick={() => onOpenDispatch(emergency)}
@@ -921,7 +924,6 @@ function EmergencyDetailModal({ emergency, onClose, onOpenDispatch, onResolve, o
   );
 }
 
-
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function Emergency() {
   const [emergencies,         setEmergencies]         = useState([]);
@@ -937,13 +939,12 @@ export default function Emergency() {
   const [trackingModalOpen,   setTrackingModalOpen]   = useState(false);
   const [trackingEmergency,   setTrackingEmergency]   = useState(null);
   const [trackingResponder,   setTrackingResponder]   = useState(null);
+  const [userActionModal,     setUserActionModal]     = useState(null); // ← NEW
 
-  // ── FIXED: Manually fetch users for each emergency ──
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
 
-      // 1. Fetch all emergencies
       const { data: emData, error: emError } = await supabase
         .from('emergencies')
         .select('*')
@@ -951,29 +952,25 @@ export default function Emergency() {
 
       if (emError) throw emError;
 
-      // 2. Collect unique user IDs from emergencies
-      const userIds = emData?.map(e => e.user_id).filter(Boolean) || [];
+      const userIds   = emData?.map(e => e.user_id).filter(Boolean) || [];
       const uniqueIds = [...new Set(userIds)];
 
-      // 3. Fetch corresponding user records
       let usersMap = {};
       if (uniqueIds.length > 0) {
         const { data: usersData, error: usersError } = await supabase
           .from('users')
-          .select('id, full_name, first_name, middle_name, last_name, email, phone, avatar_url, account_type, verification_status, purok, barangay, city, address')
+          .select('id, full_name, first_name, middle_name, last_name, email, phone, avatar_url, account_type, verification_status, purok, barangay, city, address, account_status')
           .in('id', uniqueIds);
 
         if (usersError) throw usersError;
         usersMap = Object.fromEntries(usersData.map(u => [u.id, u]));
       }
 
-      // 4. Attach user objects to each emergency
       const emergenciesWithUsers = emData?.map(e => ({
         ...e,
-        users: usersMap[e.user_id] || null
+        users: usersMap[e.user_id] || null,
       })) || [];
 
-      // 5. Fetch responders (unchanged)
       const { data: resData } = await supabase.from('responders').select('*');
 
       setEmergencies(emergenciesWithUsers);
@@ -990,7 +987,6 @@ export default function Emergency() {
     const channel = supabase
       .channel('admin-emergency-list')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'emergencies' }, payload => {
-        // Always re-fetch so the users join stays populated
         fetchData();
         if (payload.eventType === 'UPDATE') {
           setSelectedEmergency(prev =>
@@ -1004,6 +1000,12 @@ export default function Emergency() {
       .subscribe(status => setRealtimeStatus(status === 'SUBSCRIBED' ? 'live' : 'error'));
     return () => supabase.removeChannel(channel);
   }, [fetchData]);
+
+  // ← NEW: open user action modal
+  const handleOpenUserAction = (user) => {
+    if (!user) return;
+    setUserActionModal(user);
+  };
 
   const handleStartCall = async (emergency) => {
     await supabase.from('emergencies').update({ call_status: 'calling' }).eq('id', emergency.id);
@@ -1062,7 +1064,7 @@ export default function Emergency() {
           },
         });
       } catch (auditErr) {
-        console.error('⚠️ Audit log failed for emergency dispatch:', auditErr);
+        console.error('Audit log failed for emergency dispatch:', auditErr);
       }
 
       setIsDispatchOpen(false);
@@ -1070,7 +1072,7 @@ export default function Emergency() {
       setSelectedEmergency(null);
       fetchData();
     } catch (err) {
-      console.error('❌ handleDispatch error:', err);
+      console.error('handleDispatch error:', err);
       alert('Dispatch failed. Please try again.');
     }
   };
@@ -1122,13 +1124,13 @@ export default function Emergency() {
           targetName:  'Emergency',
         });
       } catch (auditErr) {
-        console.error('⚠️ Audit log failed for resolve:', auditErr);
+        console.error('Audit log failed for resolve:', auditErr);
       }
 
       setSelectedEmergency(null);
       fetchData();
     } catch (err) {
-      console.error('❌ Resolve error:', err);
+      console.error('Resolve error:', err);
       alert('Failed to resolve. Please try again.');
     }
   };
@@ -1229,7 +1231,7 @@ export default function Emergency() {
           {filteredEmergencies.map(emergency => {
             const isCancelled = emergency.status === 'cancelled';
             const teamCfg     = emergency.assigned_team ? getTeamConfig(emergency.assigned_team) : null;
-            const reporter    = emergency.users ?? null;   // joined user row
+            const reporter    = emergency.users ?? null;
 
             return (
               <div key={emergency.id} className={`bg-white border border-slate-200 border-l-4 rounded-lg shadow-sm transition-all ${borderColor[emergency.status] ?? 'border-l-slate-300'} ${isCancelled ? 'opacity-60' : 'hover:shadow-md'}`}>
@@ -1272,7 +1274,6 @@ export default function Emergency() {
 
                       <p className="text-xs text-slate-600 line-clamp-2 leading-relaxed mb-2">{emergency.description}</p>
 
-                      {/* Meta row: location + time + ref + REPORTER */}
                       <div className="flex items-center gap-3 text-xs text-slate-400 flex-wrap">
                         <span className="flex items-center gap-1">
                           <MapPin className="w-3 h-3" />{emergency.location_text ?? 'GPS Location'}
@@ -1281,7 +1282,6 @@ export default function Emergency() {
                           <Clock className="w-3 h-3" />{new Date(emergency.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                         </span>
                         <span className="font-mono text-slate-300">{emergency.id.slice(0, 8).toUpperCase()}</span>
-                        {/* Reporter pill */}
                         <span className="flex items-center gap-1.5 text-slate-500 font-medium">
                           <ReporterAvatar user={reporter} size="sm" />
                           {resolveReporterName(reporter)}
@@ -1307,6 +1307,16 @@ export default function Emergency() {
                         <CheckCircle className="w-3.5 h-3.5" /> Resolve
                       </button>
                     )}
+                    {/* ← NEW: Flag button on list card */}
+                    {reporter && (
+                      <button
+                        onClick={e => { e.stopPropagation(); handleOpenUserAction(reporter); }}
+                        className="flex items-center gap-1.5 px-3 py-2 border border-amber-200 bg-amber-50 text-amber-700 rounded text-xs font-semibold hover:bg-amber-100 transition-colors"
+                        title="Flag / Suspend Reporter"
+                      >
+                        <Flag className="w-3.5 h-3.5" /> Flag
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1323,6 +1333,7 @@ export default function Emergency() {
         onResolve={handleResolve}
         onCallUser={handleStartCall}
         onTrackResponder={handleTrackResponder}
+        onUserAction={handleOpenUserAction}
       />
       <DispatchModal
         isOpen={isDispatchOpen}
@@ -1343,6 +1354,15 @@ export default function Emergency() {
         emergencyId={activeCallId}
         onClose={() => { setIsCallOpen(false); setActiveCallId(null); }}
       />
+
+      {/* ← NEW: User Action Modal */}
+      {userActionModal && (
+        <UserActionModal
+          user={userActionModal}
+          onClose={() => setUserActionModal(null)}
+          onSuccess={fetchData}
+        />
+      )}
     </div>
   );
 }
