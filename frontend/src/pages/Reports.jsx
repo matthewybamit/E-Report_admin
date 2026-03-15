@@ -1,5 +1,5 @@
 // src/pages/Reports.jsx
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../config/supabase';
 import Groq from 'groq-sdk';
 import {
@@ -7,7 +7,7 @@ import {
   Phone, Mail, MessageSquare, CheckCircle, AlertCircle, XCircle, Wrench,
   Heart, Shield, Leaf, AlertTriangle, Send, Bot, Loader, Zap, Bell,
   Navigation, Radio, Video, Images, ChevronDown, ChevronUp, Maximize2,
-  Flag, Clock3, Users, BarChart2,
+  Flag, Clock3, Users, BarChart2, Car, Crosshair, Route,
 } from 'lucide-react';
 import { logAuditAction } from '../utils/auditLogger';
 import UserActionModal from '../components/UserActionModal';
@@ -258,30 +258,71 @@ function AIAssessmentPanel({ aiData, onAccept, onDismiss, accepting, scanning, o
   );
 }
 
-// ─── Track Responder Modal ────────────────────────────────────────────────────
+// ─── Track Responder Modal — Uber-style live tracking ────────────────────────
 function TrackResponderModal({ report, responder, onClose }) {
   const [responderLocation, setResponderLocation] = useState(null);
   const [responderStatus,   setResponderStatus]   = useState(null);
   const [loading,           setLoading]           = useState(true);
   const [distance,          setDistance]          = useState(null);
+  const [routeCoords,       setRouteCoords]       = useState([]);
+  const [routeInfo,         setRouteInfo]         = useState(null);
+  const [fetchingRoute,     setFetchingRoute]     = useState(false);
   const [leaflet,           setLeaflet]           = useState(null);
+  const [lastRouteFetch,    setLastRouteFetch]    = useState(null);
+  const [mapInstance,       setMapInstance]       = useState(null);
 
   const responderId = responder?.id;
   const reportId    = report?.id;
   const reportLat   = report?.latitude;
   const reportLng   = report?.longitude;
 
+  const routeRef        = useRef([]);
+  const lastFetchRef    = useRef(null);
+  const responderLocRef = useRef(null);
+
   const calcDistance = useCallback((lat1, lon1, lat2, lon2) => {
-    if (!lat1 || !lon1 || !lat2 || !lon2) return;
+    if (!lat1 || !lon1 || !lat2 || !lon2) return null;
     const R    = 6371;
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLon = (lon2 - lon1) * Math.PI / 180;
     const a    = Math.sin(dLat / 2) ** 2 +
                  Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
                  Math.sin(dLon / 2) ** 2;
-    setDistance((R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))).toFixed(2));
+    return (R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))).toFixed(2);
   }, []);
 
+  const getDistanceMeters = (lat1, lon1, lat2, lon2) => {
+    const R    = 6371000;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a    = Math.sin(dLat / 2) ** 2 +
+                 Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                 Math.sin(dLon / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  };
+
+  // Fetch route from edge function
+  const fetchRoute = useCallback(async (fromLat, fromLng) => {
+    if (!fromLat || !fromLng || !reportLat || !reportLng) return;
+    setFetchingRoute(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('get-route', {
+        body: { originLat: fromLat, originLng: fromLng, destLat: reportLat, destLng: reportLng },
+      });
+      if (error || !data?.coordinates?.length) return;
+      setRouteCoords(data.coordinates);
+      routeRef.current = data.coordinates;
+      setRouteInfo({
+        distance: data.distance ? `${(data.distance / 1000).toFixed(1)} km` : null,
+        durationSec: data.duration || null,
+      });
+      lastFetchRef.current = { lat: fromLat, lng: fromLng };
+      setLastRouteFetch({ lat: fromLat, lng: fromLng });
+    } catch {}
+    finally { setFetchingRoute(false); }
+  }, [reportLat, reportLng]);
+
+  // Load leaflet
   useEffect(() => {
     Promise.all([
       import('leaflet'),
@@ -295,256 +336,406 @@ function TrackResponderModal({ report, responder, onClose }) {
         iconUrl:       'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
         shadowUrl:     'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
       });
-      const blueIcon = new L.Icon({
-        iconUrl:   'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
-        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-        iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41],
+      // Pulsing responder icon
+      const pulsingIcon = (color = '#0099FF') => new L.DivIcon({
+        html: `
+          <div style="position:relative;width:44px;height:44px;display:flex;align-items:center;justify-content:center;">
+            <div style="position:absolute;width:44px;height:44px;border-radius:50%;background:${color}22;animation:pulse1 1.6s ease-out infinite;"></div>
+            <div style="position:absolute;width:30px;height:30px;border-radius:50%;background:${color}33;animation:pulse2 1.6s ease-out 0.5s infinite;"></div>
+            <div style="width:22px;height:22px;border-radius:50%;background:${color};border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;z-index:1;">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="white"><path d="M5 13l4 4L19 7"/></svg>
+            </div>
+          </div>
+          <style>
+            @keyframes pulse1{0%{transform:scale(0.5);opacity:0.8}100%{transform:scale(1.5);opacity:0}}
+            @keyframes pulse2{0%{transform:scale(0.6);opacity:0.6}100%{transform:scale(1.3);opacity:0}}
+          </style>`,
+        className: '',
+        iconSize: [44, 44],
+        iconAnchor: [22, 22],
       });
-      const redIcon = new L.Icon({
-        iconUrl:   'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
-        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-        iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41],
+      const enRoutePulse = pulsingIcon('#0099FF');
+      const onScenePulse = pulsingIcon('#00C48C');
+      const assignedPulse = pulsingIcon('#FF8C00');
+
+      const destIcon = new L.DivIcon({
+        html: `
+          <div style="display:flex;flex-direction:column;align-items:center;">
+            <div style="width:32px;height:32px;background:#FF3B30;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:3px solid white;box-shadow:0 3px 10px rgba(255,59,48,0.5);display:flex;align-items:center;justify-content:center;">
+              <div style="transform:rotate(45deg);width:10px;height:10px;background:white;border-radius:50%;"></div>
+            </div>
+          </div>`,
+        className: '',
+        iconSize: [32, 40],
+        iconAnchor: [16, 40],
+        popupAnchor: [0, -40],
       });
-      setLeaflet({ L, ...RLmod, blueIcon, redIcon });
-    }).catch(err => console.error('Leaflet load error', err));
+
+      setLeaflet({ L, ...RLmod, enRoutePulse, onScenePulse, assignedPulse, destIcon });
+    }).catch(console.error);
   }, []);
 
+  // Init data + subscriptions
   useEffect(() => {
     if (!responderId || !reportId) return;
 
     const init = async () => {
       setLoading(true);
       try {
-        const { data: rd } = await supabase
-          .from('responders')
-          .select('current_lat, current_lng')
-          .eq('id', responderId)
-          .single();
+        const { data: rd } = await supabase.from('responders').select('current_lat,current_lng').eq('id', responderId).single();
         if (rd?.current_lat && rd?.current_lng) {
           setResponderLocation({ lat: rd.current_lat, lng: rd.current_lng });
-          calcDistance(rd.current_lat, rd.current_lng, reportLat, reportLng);
+          responderLocRef.current = { lat: rd.current_lat, lng: rd.current_lng };
+          setDistance(calcDistance(rd.current_lat, rd.current_lng, reportLat, reportLng));
+          await fetchRoute(rd.current_lat, rd.current_lng);
         }
-        const { data: rpt } = await supabase
-          .from('reports')
-          .select('responder_status')
-          .eq('id', reportId)
-          .single();
+        const { data: rpt } = await supabase.from('reports').select('responder_status').eq('id', reportId).single();
         if (rpt) setResponderStatus(rpt.responder_status);
-      } catch (err) {
-        console.error('TrackResponderModal init error:', err);
-      } finally {
-        setLoading(false);
-      }
+      } finally { setLoading(false); }
     };
     init();
 
-    const ch1 = supabase
-      .channel(`responder-loc-${responderId}-${Date.now()}`)
-      .on('postgres_changes', {
-        event: 'UPDATE', schema: 'public', table: 'responders',
-        filter: `id=eq.${responderId}`,
-      }, ({ new: n }) => {
-        if (n.current_lat && n.current_lng) {
-          setResponderLocation({ lat: n.current_lat, lng: n.current_lng });
-          calcDistance(n.current_lat, n.current_lng, reportLat, reportLng);
+    // Realtime responder GPS
+    const ch1 = supabase.channel(`rpt-track-resp-${responderId}-${Date.now()}`)
+      .on('postgres_changes', { event:'UPDATE', schema:'public', table:'responders', filter:`id=eq.${responderId}` },
+        async ({ new: n }) => {
+          if (!n.current_lat || !n.current_lng) return;
+          const newLoc = { lat: n.current_lat, lng: n.current_lng };
+          setResponderLocation(newLoc);
+          responderLocRef.current = newLoc;
+          setDistance(calcDistance(n.current_lat, n.current_lng, reportLat, reportLng));
+          // Re-fetch route if moved >40m
+          const last = lastFetchRef.current;
+          if (!last || getDistanceMeters(last.lat, last.lng, n.current_lat, n.current_lng) > 40) {
+            await fetchRoute(n.current_lat, n.current_lng);
+          }
         }
-      }).subscribe();
+      ).subscribe();
 
-    const ch2 = supabase
-      .channel(`report-status-${reportId}-${Date.now()}`)
-      .on('postgres_changes', {
-        event: 'UPDATE', schema: 'public', table: 'reports',
-        filter: `id=eq.${reportId}`,
-      }, ({ new: n }) => setResponderStatus(n.responder_status))
-      .subscribe();
+    // Realtime report status
+    const ch2 = supabase.channel(`rpt-track-status-${reportId}-${Date.now()}`)
+      .on('postgres_changes', { event:'UPDATE', schema:'public', table:'reports', filter:`id=eq.${reportId}` },
+        ({ new: n }) => setResponderStatus(n.responder_status)
+      ).subscribe();
 
+    // Fallback polling every 10s
     const poll = setInterval(async () => {
-      const { data } = await supabase
-        .from('responders')
-        .select('current_lat, current_lng')
-        .eq('id', responderId)
-        .single();
+      const { data } = await supabase.from('responders').select('current_lat,current_lng').eq('id', responderId).single();
       if (data?.current_lat && data?.current_lng) {
-        setResponderLocation({ lat: data.current_lat, lng: data.current_lng });
-        calcDistance(data.current_lat, data.current_lng, reportLat, reportLng);
+        const newLoc = { lat: data.current_lat, lng: data.current_lng };
+        setResponderLocation(newLoc);
+        responderLocRef.current = newLoc;
+        setDistance(calcDistance(data.current_lat, data.current_lng, reportLat, reportLng));
+        const last = lastFetchRef.current;
+        if (!last || getDistanceMeters(last.lat, last.lng, data.current_lat, data.current_lng) > 40) {
+          await fetchRoute(data.current_lat, data.current_lng);
+        }
       }
-    }, 8000);
+    }, 10000);
 
     return () => {
       supabase.removeChannel(ch1);
       supabase.removeChannel(ch2);
       clearInterval(poll);
     };
-  }, [responderId, reportId, reportLat, reportLng, calcDistance]);
+  }, [responderId, reportId, reportLat, reportLng, calcDistance, fetchRoute]);
 
-  const statusLabel = { assigned: 'Assigned', en_route: 'En Route', on_scene: 'On Scene', completing: 'Completing' };
-  const steps       = ['assigned', 'en_route', 'on_scene', 'completing'];
-  const curStep     = steps.indexOf(responderStatus);
-  const teamCfg     = getTeamConfig(responder?.team || 'bpso');
+  const fmtETA = (sec) => {
+    if (!sec || sec <= 0) return 'Arriving';
+    const m = Math.floor(sec / 60);
+    if (m <= 0) return '< 1 min';
+    return m >= 60 ? `${Math.floor(m/60)}h ${m%60}m` : `${m} min`;
+  };
+
+  const statusSteps = [
+    { key:'assigned',  label:'Assigned', icon:<Send className="w-3.5 h-3.5" /> },
+    { key:'en_route',  label:'En Route', icon:<Car className="w-3.5 h-3.5" /> },
+    { key:'on_scene',  label:'On Scene', icon:<MapPin className="w-3.5 h-3.5" /> },
+    { key:'completing',label:'Completing',icon:<CheckCircle className="w-3.5 h-3.5" /> },
+  ];
+  const stepOrder  = ['assigned','en_route','on_scene','completing'];
+  const activeStep = stepOrder.indexOf(responderStatus);
+  const teamCfg    = getTeamConfig(responder?.team || 'bpso');
+  const isArrived  = ['on_scene','completing'].includes(responderStatus);
 
   const renderMap = () => {
-    if (!leaflet) {
-      return (
-        <div className="h-full flex items-center justify-center bg-slate-50">
-          <Loader className="w-6 h-6 text-slate-400 animate-spin" />
-        </div>
-      );
-    }
+    if (!leaflet) return (
+      <div className="h-full flex items-center justify-center bg-slate-900">
+        <Loader className="w-6 h-6 text-slate-400 animate-spin" />
+      </div>
+    );
 
-    const { MapContainer, TileLayer, Marker, Popup, Polyline, useMap, blueIcon, redIcon, L } = leaflet;
+    const { MapContainer, TileLayer, Marker, Popup, Polyline, useMap, enRoutePulse, onScenePulse, assignedPulse, destIcon, L } = leaflet;
 
-    function MapUpdater({ responderLocation, reportLocation }) {
+    const responderIcon = responderStatus === 'on_scene' ? onScenePulse
+                        : responderStatus === 'en_route' ? enRoutePulse
+                        : assignedPulse;
+
+    function MapFitter({ respLoc, destLat, destLng, route }) {
       const map = useMap();
       useEffect(() => {
-        if (responderLocation && reportLocation) {
-          map.fitBounds(
-            L.latLngBounds(
-              [responderLocation.lat, responderLocation.lng],
-              [reportLocation.lat, reportLocation.lng],
-            ),
-            { padding: [50, 50] },
-          );
+        if (!map) return;
+        if (route?.length > 1) {
+          map.fitBounds(L.latLngBounds(route.map(c => [c.latitude, c.longitude])), { padding:[40,40] });
+        } else if (respLoc && destLat && destLng) {
+          map.fitBounds(L.latLngBounds([[respLoc.lat,respLoc.lng],[destLat,destLng]]), { padding:[60,60] });
         }
-      }, [responderLocation, reportLocation, map]);
+      }, []);
       return null;
     }
 
-    if (responderLocation && reportLat && reportLng) {
-      return (
-        <MapContainer
-          center={[responderLocation.lat, responderLocation.lng]}
-          zoom={13}
-          style={{ height: '100%', width: '100%' }}
-        >
-          <TileLayer
-            attribution="&copy; OpenStreetMap contributors"
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
-          <Marker position={[responderLocation.lat, responderLocation.lng]} icon={blueIcon}>
-            <Popup><strong>{responder.name}</strong><br /><span className="text-xs">Current Location</span></Popup>
-          </Marker>
-          <Marker position={[reportLat, reportLng]} icon={redIcon}>
-            <Popup><strong>Destination</strong><br /><span className="text-xs">{report.title}</span></Popup>
-          </Marker>
-          <Polyline
-            positions={[[responderLocation.lat, responderLocation.lng], [reportLat, reportLng]]}
-            pathOptions={{ color: '#475569', weight: 3, dashArray: '8, 8' }}
-          />
-          <MapUpdater
-            responderLocation={responderLocation}
-            reportLocation={{ lat: reportLat, lng: reportLng }}
-          />
-        </MapContainer>
-      );
-    }
+    const center = responderLocation
+      ? [responderLocation.lat, responderLocation.lng]
+      : reportLat && reportLng ? [reportLat, reportLng] : [14.5995, 120.9842];
 
     return (
-      <div className="h-full flex items-center justify-center bg-slate-50">
-        <div className="text-center px-6">
-          <MapPin className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-          <p className="text-slate-600 text-sm font-semibold">
-            {!responderLocation ? 'Waiting for GPS data...' : 'Report has no coordinates'}
-          </p>
-          <p className="text-xs text-slate-400 mt-2 leading-relaxed">
-            {!responderLocation
-              ? `The responder's device (${responder.name}) must have GPS active. GPS updates every 10 seconds.`
-              : 'The original report was submitted without GPS coordinates.'}
-          </p>
-        </div>
-      </div>
+      <MapContainer center={center} zoom={15} style={{ height:'100%', width:'100%' }}
+        ref={(m) => m && setMapInstance(m)}>
+        <TileLayer
+          url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+          attribution='&copy; <a href="https://carto.com/">CARTO</a>'
+        />
+
+        {/* Route polyline — shadow + color */}
+        {routeCoords.length > 1 && (
+          <>
+            <Polyline
+              positions={routeCoords.map(c => [c.latitude, c.longitude])}
+              pathOptions={{ color:'#000000', weight:9, opacity:0.3, lineCap:'round', lineJoin:'round' }}
+            />
+            <Polyline
+              positions={routeCoords.map(c => [c.latitude, c.longitude])}
+              pathOptions={{ color: isArrived ? '#00C48C' : '#0099FF', weight:5, opacity:1, lineCap:'round', lineJoin:'round' }}
+            />
+          </>
+        )}
+
+        {/* Responder pulsing marker */}
+        {responderLocation && (
+          <Marker position={[responderLocation.lat, responderLocation.lng]} icon={responderIcon}>
+            <Popup>
+              <div className="text-xs font-bold">{responder?.name}</div>
+              <div className="text-xs text-slate-500">{teamCfg.label}</div>
+              {distance && <div className="text-xs text-blue-600 mt-1">{distance} km from scene</div>}
+            </Popup>
+          </Marker>
+        )}
+
+        {/* Destination pin */}
+        {reportLat && reportLng && (
+          <Marker position={[reportLat, reportLng]} icon={destIcon}>
+            <Popup><div className="text-xs font-bold">{report.title}</div></Popup>
+          </Marker>
+        )}
+
+        <MapFitter respLoc={responderLocation} destLat={reportLat} destLng={reportLng} route={routeCoords} />
+      </MapContainer>
     );
   };
 
   if (!responder) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-lg shadow-2xl max-w-5xl w-full max-h-[90vh] overflow-hidden border border-slate-200">
-        <div className="bg-slate-800 px-6 py-4 flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-2">
-              <Radio className="w-4 h-4 text-slate-300 animate-pulse" />
-              <h2 className="text-sm font-bold text-white uppercase tracking-widest">Live Responder Tracking</h2>
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-slate-900 rounded-2xl shadow-2xl max-w-4xl w-full max-h-[92vh] overflow-hidden border border-slate-700 flex flex-col">
+
+        {/* Header */}
+        <div className="bg-slate-800 px-6 py-4 flex items-center justify-between border-b border-slate-700 shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="relative">
+              <div className="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center text-white font-bold text-sm">
+                {responder.name?.charAt(0)?.toUpperCase()}
+              </div>
+              <span className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-slate-800 ${
+                responderStatus === 'on_scene' ? 'bg-green-500' :
+                responderStatus === 'en_route' ? 'bg-blue-500 animate-pulse' : 'bg-amber-500'
+              }`} />
             </div>
-            <p className="text-slate-400 text-xs mt-1">
-              {responder.name}
-              <span className={`ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold ${teamCfg.color}`}>
-                <Users className="w-3 h-3" />{teamCfg.label}
-              </span>
-            </p>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-bold text-white">{responder.name}</span>
+                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold ${teamCfg.color}`}>
+                  <Users className="w-3 h-3" />{teamCfg.label}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 mt-0.5">
+                <div className={`flex items-center gap-1 text-xs font-semibold ${
+                  responderLocation ? 'text-green-400' : 'text-amber-400'
+                }`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${responderLocation ? 'bg-green-400 animate-pulse' : 'bg-amber-400'}`} />
+                  {responderLocation ? 'GPS LIVE' : 'LOCATING...'}
+                </div>
+                {fetchingRoute && (
+                  <div className="flex items-center gap-1 text-xs text-blue-400">
+                    <Loader className="w-3 h-3 animate-spin" />ROUTE UPDATING
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white p-2 rounded transition-colors">
+          <button onClick={onClose} className="text-slate-400 hover:text-white p-2 rounded-lg transition-colors">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
-          {loading ? (
-            <div className="flex flex-col items-center justify-center py-16 gap-3">
-              <Loader className="w-8 h-8 text-slate-400 animate-spin" />
-              <p className="text-sm text-slate-500">Fetching live GPS data...</p>
+        <div className="flex flex-col md:flex-row flex-1 min-h-0 overflow-hidden">
+
+          {/* Map panel */}
+          <div className="flex-1 min-h-64 md:min-h-0 relative">
+            {loading ? (
+              <div className="h-full flex flex-col items-center justify-center bg-slate-900 gap-3">
+                <Loader className="w-8 h-8 text-slate-400 animate-spin" />
+                <p className="text-sm text-slate-400">Connecting to GPS feed...</p>
+              </div>
+            ) : (
+              renderMap()
+            )}
+
+            {/* ETA overlay on map */}
+            {!loading && responderStatus === 'en_route' && routeInfo && (
+              <div className="absolute top-3 left-3 bg-slate-900/90 rounded-xl px-4 py-3 border border-slate-700 backdrop-blur-sm">
+                <div className="text-2xl font-black text-blue-400 leading-none">{fmtETA(routeInfo.durationSec)}</div>
+                <div className="text-xs text-slate-400 font-semibold mt-0.5 uppercase tracking-wider">ETA</div>
+                {routeInfo.distance && (
+                  <div className="text-xs text-slate-300 mt-1 flex items-center gap-1">
+                    <Route className="w-3 h-3" />{routeInfo.distance}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* On-scene badge */}
+            {isArrived && (
+              <div className="absolute top-3 left-3 bg-green-900/90 rounded-xl px-4 py-3 border border-green-700 backdrop-blur-sm">
+                <div className="text-sm font-black text-green-400 flex items-center gap-2">
+                  <MapPin className="w-4 h-4" />RESPONDER ON SCENE
+                </div>
+              </div>
+            )}
+
+            {/* No GPS fallback */}
+            {!loading && !responderLocation && (
+              <div className="absolute inset-0 flex items-center justify-center bg-slate-900/80">
+                <div className="text-center px-8">
+                  <Crosshair className="w-10 h-10 text-slate-500 mx-auto mb-3" />
+                  <p className="text-sm font-semibold text-slate-300">Waiting for GPS signal</p>
+                  <p className="text-xs text-slate-500 mt-1">The responder's device must have location active. Updates every 10 seconds.</p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Side panel */}
+          <div className="w-full md:w-72 bg-slate-900 border-t md:border-t-0 md:border-l border-slate-700 flex flex-col overflow-y-auto">
+
+            {/* Status pipeline */}
+            <div className="px-5 pt-5 pb-4 border-b border-slate-800">
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Response Progress</p>
+              <div className="space-y-1">
+                {statusSteps.map((step, i) => {
+                  const done    = i <  activeStep;
+                  const active  = i === activeStep;
+                  const pending = i >  activeStep;
+                  return (
+                    <div key={step.key} className="flex items-center gap-3">
+                      <div className="flex flex-col items-center">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 transition-all ${
+                          done   ? 'bg-green-600 border-green-600 text-white' :
+                          active ? 'bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-500/30' :
+                                   'bg-slate-800 border-slate-700 text-slate-600'
+                        }`}>
+                          {done ? <CheckCircle className="w-4 h-4" /> : step.icon}
+                        </div>
+                        {i < statusSteps.length - 1 && (
+                          <div className={`w-0.5 h-5 mt-1 ${done ? 'bg-green-600' : 'bg-slate-700'}`} />
+                        )}
+                      </div>
+                      <div className="pb-5">
+                        <p className={`text-xs font-bold ${done ? 'text-green-400' : active ? 'text-white' : 'text-slate-600'}`}>
+                          {step.label}
+                        </p>
+                        {active && (
+                          <p className="text-xs text-slate-500 mt-0.5">
+                            {step.key === 'en_route'  ? `${distance ? distance + ' km away' : 'In transit'}` :
+                             step.key === 'on_scene'  ? 'Attending to incident' :
+                             step.key === 'assigned'  ? 'Preparing for dispatch' : 'Wrapping up'}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          ) : (
-            <>
-              <div className="grid grid-cols-3 gap-3">
+
+            {/* Live stats */}
+            <div className="px-5 py-4 border-b border-slate-800">
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Live Stats</p>
+              <div className="grid grid-cols-2 gap-2">
                 {[
-                  { label: 'Status',   value: responderStatus ? (statusLabel[responderStatus] || 'Unknown') : 'Assigned' },
-                  { label: 'Distance', value: distance ? `${distance} km away` : (reportLat && reportLng ? 'Calculating...' : 'No report coords') },
-                  { label: 'GPS Feed', value: responderLocation ? '● Live' : '○ Waiting for GPS...' },
-                ].map(({ label, value }) => (
-                  <div key={label} className="bg-slate-50 border border-slate-200 rounded p-3">
-                    <p className="text-xs text-slate-500 uppercase tracking-widest font-semibold mb-1">{label}</p>
-                    <p className={`text-sm font-bold ${label === 'GPS Feed' && responderLocation ? 'text-green-700' : 'text-slate-800'}`}>{value}</p>
+                  {
+                    label: 'Distance',
+                    value: distance ? `${distance} km` : '—',
+                    icon: <Route className="w-3.5 h-3.5" />,
+                    color: 'text-blue-400',
+                  },
+                  {
+                    label: 'ETA',
+                    value: isArrived ? 'On Scene' : fmtETA(routeInfo?.durationSec),
+                    icon: <Clock className="w-3.5 h-3.5" />,
+                    color: isArrived ? 'text-green-400' : 'text-blue-400',
+                  },
+                  {
+                    label: 'Route',
+                    value: routeInfo?.distance || (routeCoords.length > 1 ? 'Loaded' : 'Pending'),
+                    icon: <Navigation className="w-3.5 h-3.5" />,
+                    color: routeCoords.length > 1 ? 'text-green-400' : 'text-slate-400',
+                  },
+                  {
+                    label: 'GPS Feed',
+                    value: responderLocation ? 'Live' : 'Searching',
+                    icon: <Crosshair className="w-3.5 h-3.5" />,
+                    color: responderLocation ? 'text-green-400' : 'text-amber-400',
+                  },
+                ].map(({ label, value, icon, color }) => (
+                  <div key={label} className="bg-slate-800 rounded-lg p-3 border border-slate-700">
+                    <div className={`flex items-center gap-1.5 mb-1 ${color}`}>{icon}<span className="text-xs font-bold uppercase tracking-wide">{label}</span></div>
+                    <p className="text-sm font-bold text-white">{value}</p>
                   </div>
                 ))}
               </div>
+            </div>
 
-              <div className="border border-slate-200 rounded overflow-hidden h-80">
-                {renderMap()}
-              </div>
-
-              <div className="border border-slate-200 rounded p-4">
-                <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Response Timeline</p>
-                <div className="flex items-center">
-                  {steps.map((s, idx) => (
-                    <div key={s} className="flex items-center flex-1">
-                      <div className="flex flex-col items-center gap-1 flex-1">
-                        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 ${
-                          s === responderStatus ? 'bg-slate-700 text-white border-slate-700' :
-                          curStep > idx        ? 'bg-green-600 text-white border-green-600' :
-                                                 'bg-white text-slate-400 border-slate-300'
-                        }`}>
-                          {curStep > idx ? '✓' : idx + 1}
-                        </div>
-                        <p className={`text-xs font-medium text-center ${
-                          s === responderStatus ? 'text-slate-800' :
-                          curStep > idx        ? 'text-green-700'  : 'text-slate-400'
-                        }`}>{statusLabel[s]}</p>
-                      </div>
-                      {idx < steps.length - 1 && (
-                        <div className={`h-0.5 flex-1 mb-5 ${curStep > idx ? 'bg-green-400' : 'bg-slate-200'}`} />
-                      )}
-                    </div>
-                  ))}
+            {/* Responder coords */}
+            {responderLocation && (
+              <div className="px-5 py-4 border-b border-slate-800">
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Responder GPS</p>
+                <div className="bg-slate-800 rounded-lg p-3 border border-slate-700 font-mono text-xs text-slate-300">
+                  <div>{responderLocation.lat.toFixed(6)},</div>
+                  <div>{responderLocation.lng.toFixed(6)}</div>
                 </div>
               </div>
+            )}
 
-              {responderLocation && reportLat && reportLng && (
+            {/* Directions button */}
+            {responderLocation && reportLat && reportLng && (
+              <div className="px-5 py-4">
                 <a
                   href={`https://www.google.com/maps/dir/?api=1&origin=${responderLocation.lat},${responderLocation.lng}&destination=${reportLat},${reportLng}&travelmode=driving`}
                   target="_blank" rel="noreferrer"
-                  className="flex items-center justify-center gap-2 w-full py-2.5 bg-slate-700 hover:bg-slate-800 text-white text-sm font-semibold rounded transition-colors"
+                  className="flex items-center justify-center gap-2 w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition-colors"
                 >
-                  <Navigation className="w-4 h-4" />Open Turn-by-Turn Directions
+                  <Navigation className="w-3.5 h-3.5" />Open in Google Maps
                 </a>
-              )}
-            </>
-          )}
+              </div>
+            )}
+          </div>
         </div>
 
-        <div className="bg-slate-50 border-t border-slate-200 px-6 py-3">
-          <button onClick={onClose} className="w-full py-2 text-sm font-semibold text-slate-700 bg-white border border-slate-300 rounded hover:bg-slate-50 transition-colors">
-            Close
+        {/* Footer */}
+        <div className="bg-slate-800 border-t border-slate-700 px-6 py-3 shrink-0">
+          <button onClick={onClose} className="w-full py-2 text-sm font-semibold text-slate-400 hover:text-white transition-colors">
+            Close Tracker
           </button>
         </div>
       </div>
@@ -865,19 +1056,8 @@ function ReportCard({ report, onView, onEdit, onDelete, canEdit, aiInsights, onT
             <>
               <button onClick={() => onEdit(report)} className="p-2 text-slate-500 bg-slate-100 rounded hover:bg-slate-200 transition-colors" title="Edit"><Edit3 className="w-3.5 h-3.5" /></button>
               <button
-                onClick={e => {
-                  e.stopPropagation();
-                  onUserAction({
-                    id:             report.reporter_id,
-                    email:          report.reporter_email,
-                    full_name:      report.reporter_name,
-                    phone:          report.reporter_phone,
-                    account_status: 'active',
-                  });
-                }}
-                className="p-2 text-amber-600 bg-amber-50 rounded hover:bg-amber-100 transition-colors"
-                title="Flag / Suspend Reporter"
-              >
+                onClick={e => { e.stopPropagation(); onUserAction({ id: report.reporter_id, email: report.reporter_email, full_name: report.reporter_name, phone: report.reporter_phone, account_status: 'active' }); }}
+                className="p-2 text-amber-600 bg-amber-50 rounded hover:bg-amber-100 transition-colors" title="Flag / Suspend Reporter">
                 <Flag className="w-3.5 h-3.5" />
               </button>
               <button onClick={() => onDelete(report)} className="p-2 text-red-500 bg-red-50 rounded hover:bg-red-100 transition-colors" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
@@ -930,59 +1110,35 @@ function ViewReportModal({ report, onClose, onEditStatus, canEdit, onDeployRespo
         </div>
 
         <div className="p-6 space-y-5">
-          <AIAssessmentPanel
-            aiData={aiData}
-            onAccept={() => onAcceptAI(report.id)}
-            onDismiss={onDismissAI}
-            accepting={acceptingAI}
-            scanning={scanning}
-            onRunAssessment={() => onRunAssessment(report)}
-            canRun={canEdit}
-          />
+          <AIAssessmentPanel aiData={aiData} onAccept={() => onAcceptAI(report.id)} onDismiss={onDismissAI}
+            accepting={acceptingAI} scanning={scanning} onRunAssessment={() => onRunAssessment(report)} canRun={canEdit} />
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <div className="border border-slate-200 rounded-lg overflow-hidden">
               <div className="bg-slate-50 border-b border-slate-200 px-4 py-2.5 flex items-center justify-between">
                 <p className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center gap-2"><User className="w-3.5 h-3.5" />Reporter Information</p>
                 {canEdit && (
-                  <button
-                    onClick={() => onUserAction({
-                      id:             report.reporter_id,
-                      email:          report.reporter_email,
-                      full_name:      report.reporter_name,
-                      phone:          report.reporter_phone,
-                      account_status: 'active',
-                    })}
-                    className="flex items-center gap-1 px-2 py-1 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded hover:bg-amber-100 transition-colors"
-                  >
+                  <button onClick={() => onUserAction({ id: report.reporter_id, email: report.reporter_email, full_name: report.reporter_name, phone: report.reporter_phone, account_status: 'active' })}
+                    className="flex items-center gap-1 px-2 py-1 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded hover:bg-amber-100 transition-colors">
                     <Flag className="w-3 h-3" /> Flag User
                   </button>
                 )}
               </div>
               <div className="p-4 space-y-3">
                 <div><p className="text-xs text-slate-400 uppercase tracking-wide font-semibold mb-0.5">Full Name</p><p className="text-sm font-semibold text-slate-800">{report.reporter_name}</p></div>
-                <div>
-                  <p className="text-xs text-slate-400 uppercase tracking-wide font-semibold mb-0.5">Contact Number</p>
-                  <a href={`tel:${report.reporter_phone}`} className="text-sm text-slate-700 hover:text-slate-900 flex items-center gap-1.5">
-                    <Phone className="w-3.5 h-3.5 text-slate-400" />{report.reporter_phone || 'N/A'}
-                  </a>
-                </div>
-                <div>
-                  <p className="text-xs text-slate-400 uppercase tracking-wide font-semibold mb-0.5">Email Address</p>
-                  <a href={`mailto:${report.reporter_email}`} className="text-sm text-slate-700 hover:text-slate-900 flex items-center gap-1.5">
-                    <Mail className="w-3.5 h-3.5 text-slate-400" />{report.reporter_email}
-                  </a>
-                </div>
+                <div><p className="text-xs text-slate-400 uppercase tracking-wide font-semibold mb-0.5">Contact Number</p>
+                  <a href={`tel:${report.reporter_phone}`} className="text-sm text-slate-700 hover:text-slate-900 flex items-center gap-1.5"><Phone className="w-3.5 h-3.5 text-slate-400" />{report.reporter_phone || 'N/A'}</a></div>
+                <div><p className="text-xs text-slate-400 uppercase tracking-wide font-semibold mb-0.5">Email Address</p>
+                  <a href={`mailto:${report.reporter_email}`} className="text-sm text-slate-700 hover:text-slate-900 flex items-center gap-1.5"><Mail className="w-3.5 h-3.5 text-slate-400" />{report.reporter_email}</a></div>
               </div>
             </div>
-
             <div className="border border-slate-200 rounded-lg overflow-hidden">
               <div className="bg-slate-50 border-b border-slate-200 px-4 py-2.5">
                 <p className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center gap-2"><FileText className="w-3.5 h-3.5" />Incident Details</p>
               </div>
               <div className="p-4 space-y-3">
                 <div><p className="text-xs text-slate-400 uppercase tracking-wide font-semibold mb-0.5">Classification</p><p className="text-sm font-semibold text-slate-800 capitalize">{report.category}</p></div>
-                <div><p className="text-xs text-slate-400 uppercase tracking-wide font-semibold mb-0.5">Date Filed</p><p className="text-sm text-slate-700">{new Date(report.created_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p></div>
+                <div><p className="text-xs text-slate-400 uppercase tracking-wide font-semibold mb-0.5">Date Filed</p><p className="text-sm text-slate-700">{new Date(report.created_at).toLocaleDateString('en-US', { month:'long', day:'numeric', year:'numeric' })}</p></div>
                 <div><p className="text-xs text-slate-400 uppercase tracking-wide font-semibold mb-0.5">Description</p><p className="text-sm text-slate-700 leading-relaxed">{report.description}</p></div>
               </div>
             </div>
@@ -1052,16 +1208,8 @@ function ViewReportModal({ report, onClose, onEditStatus, canEdit, onDeployRespo
         <div className="sticky bottom-0 bg-slate-50 border-t border-slate-200 px-6 py-4 flex gap-3 flex-wrap rounded-b-lg">
           <button onClick={onClose} className="px-4 py-2 text-sm font-semibold text-slate-700 bg-white border border-slate-300 rounded hover:bg-slate-50 transition-colors">Close</button>
           {canEdit && (
-            <button
-              onClick={() => onUserAction({
-                id:             report.reporter_id,
-                email:          report.reporter_email,
-                full_name:      report.reporter_name,
-                phone:          report.reporter_phone,
-                account_status: 'active',
-              })}
-              className="flex items-center gap-2 px-4 py-2 border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 text-sm font-semibold rounded transition-colors"
-            >
+            <button onClick={() => onUserAction({ id: report.reporter_id, email: report.reporter_email, full_name: report.reporter_name, phone: report.reporter_phone, account_status: 'active' })}
+              className="flex items-center gap-2 px-4 py-2 border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 text-sm font-semibold rounded transition-colors">
               <Flag className="w-4 h-4" /> Flag / Suspend Reporter
             </button>
           )}
@@ -1175,7 +1323,7 @@ export default function Reports() {
   const [aiDataMap,         setAiDataMap]         = useState({});
   const [scanningId,        setScanningId]        = useState(null);
   const [acceptingAI,       setAcceptingAI]       = useState(false);
-  const [userActionModal,   setUserActionModal]   = useState(null); // ← NEW
+  const [userActionModal,   setUserActionModal]   = useState(null);
 
   useEffect(() => { fetchReports(); fetchResponders(); checkUserRole(); }, []);
   useEffect(() => { filterReports(); }, [reports, searchQuery, statusFilter, priorityFilter]);
@@ -1222,71 +1370,26 @@ export default function Reports() {
     }
   };
 
-  // ← NEW: open user action modal
-  const handleOpenUserAction = (user) => {
-    if (!user) return;
-    setUserActionModal(user);
-  };
+  const handleOpenUserAction = (user) => { if (!user) return; setUserActionModal(user); };
 
   const handleRunAssessment = async (report) => {
     setScanningId(report.id);
     try {
       const { data: { session } } = await supabase.auth.getSession();
-
       const [aiResult, fraudResult] = await Promise.all([
-        analyzeReportWithAI({
-          category:    report.category,
-          title:       report.title,
-          description: report.description,
-          location:    report.location,
-        }),
+        analyzeReportWithAI({ category: report.category, title: report.title, description: report.description, location: report.location }),
         fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/check-report-evidence`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey':        import.meta.env.VITE_SUPABASE_ANON_KEY,
-            'Authorization': `Bearer ${session?.access_token ?? import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          },
+          headers: { 'Content-Type': 'application/json', 'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY, 'Authorization': `Bearer ${session?.access_token ?? import.meta.env.VITE_SUPABASE_ANON_KEY}` },
           body: JSON.stringify({ report }),
-        })
-          .then(async (res) => {
-            const text = await res.text();
-            try { return JSON.parse(text); } catch { return null; }
-          })
-          .catch(() => null),
+        }).then(async res => { const text = await res.text(); try { return JSON.parse(text); } catch { return null; } }).catch(() => null),
       ]);
-
       const merged = { ...aiResult, fraud: fraudResult || null };
       setAiDataMap(prev => ({ ...prev, [report.id]: merged }));
-
-      setReports(prev => prev.map(r => r.id === report.id ? {
-        ...r,
-        ai_verdict: fraudResult?.verdict      ?? r.ai_verdict,
-        ai_score:   fraudResult?.score        ?? r.ai_score,
-        ai_notes:   fraudResult?.explanation  ?? r.ai_notes,
-      } : r));
-
-      if (selectedReport?.id === report.id) {
-        setSelectedReport(prev => ({
-          ...prev,
-          ai_verdict: fraudResult?.verdict      ?? prev.ai_verdict,
-          ai_score:   fraudResult?.score        ?? prev.ai_score,
-          ai_notes:   fraudResult?.explanation  ?? prev.ai_notes,
-        }));
-      }
-
-      await logAuditAction({
-        action:      'scan',
-        actionType:  'report',
-        description: `AI full assessment on ${report.report_number}`,
-        severity:    'info',
-        targetId:    report.id,
-      });
-    } catch (err) {
-      console.error('Assessment error:', err);
-    } finally {
-      setScanningId(null);
-    }
+      setReports(prev => prev.map(r => r.id === report.id ? { ...r, ai_verdict: fraudResult?.verdict ?? r.ai_verdict, ai_score: fraudResult?.score ?? r.ai_score, ai_notes: fraudResult?.explanation ?? r.ai_notes } : r));
+      if (selectedReport?.id === report.id) setSelectedReport(prev => ({ ...prev, ai_verdict: fraudResult?.verdict ?? prev.ai_verdict, ai_score: fraudResult?.score ?? prev.ai_score, ai_notes: fraudResult?.explanation ?? prev.ai_notes }));
+      await logAuditAction({ action: 'scan', actionType: 'report', description: `AI full assessment on ${report.report_number}`, severity: 'info', targetId: report.id });
+    } catch (err) { console.error('Assessment error:', err); } finally { setScanningId(null); }
   };
 
   const handleAcceptAI = async (reportId) => {
@@ -1297,9 +1400,7 @@ export default function Reports() {
       const report = reports.find(r => r.id === reportId);
       const notes = [
         `AI Assessment (${new Date().toLocaleDateString()})`,
-        `Priority: ${ai.priority?.toUpperCase()}`,
-        `Severity: ${ai.severity}/10`,
-        `Response: ${ai.responseTime}h`,
+        `Priority: ${ai.priority?.toUpperCase()}`, `Severity: ${ai.severity}/10`, `Response: ${ai.responseTime}h`,
         ai.suggestedTeam ? `Suggested Team: ${getTeamConfig(ai.suggestedTeam).label}` : null,
         `Reasoning: ${ai.reasoning}`,
         ai.suggestedActions?.length ? `Actions: ${ai.suggestedActions.join(', ')}` : null,
@@ -1344,56 +1445,23 @@ export default function Reports() {
       const availableMembers = teamData.available;
       const memberNames      = availableMembers.map(m => m.name).join(', ');
       const leadResponder    = availableMembers.find(m => m.id === leadResponderId);
-
-      if (availableMembers.length > 0) {
-        await supabase.from('responders').update({ status: 'busy' }).in('id', availableMembers.map(m => m.id));
-      }
-
-      await supabase
-        .from('reports')
-        .update({
-          status:                'in-progress',
-          assigned_to:           `${teamData.label}: ${memberNames}`,
-          assigned_responder_id: leadResponderId,
-          responder_status:      'assigned',
-        })
-        .eq('id', selectedReport.id);
-
+      if (availableMembers.length > 0) await supabase.from('responders').update({ status: 'busy' }).in('id', availableMembers.map(m => m.id));
+      await supabase.from('reports').update({ status: 'in-progress', assigned_to: `${teamData.label}: ${memberNames}`, assigned_responder_id: leadResponderId, responder_status: 'assigned' }).eq('id', selectedReport.id);
       try {
-        await logAuditAction({
-          action:      'deploy',
-          actionType:  'responder',
-          description: `Dispatched ${teamData.label} to ${selectedReport.report_number}. Lead: ${leadResponder?.name ?? 'N/A'}. Members: ${memberNames}`,
-          severity:    'warning',
-          targetId:    selectedReport.id,
-          targetType:  'report',
-          targetName:  selectedReport.title,
-          newValues: {
-            assigned_to:     teamData.label,
-            team:            teamValue,
-            lead:            leadResponder?.name,
-            membersDeployed: availableMembers.length,
-          },
-        });
-      } catch (auditErr) {
-        console.error('Audit log failed for deploy:', auditErr);
-      }
-
+        await logAuditAction({ action: 'deploy', actionType: 'responder', description: `Dispatched ${teamData.label} to ${selectedReport.report_number}. Lead: ${leadResponder?.name ?? 'N/A'}. Members: ${memberNames}`, severity: 'warning', targetId: selectedReport.id, targetType: 'report', targetName: selectedReport.title, newValues: { assigned_to: teamData.label, team: teamValue, lead: leadResponder?.name, membersDeployed: availableMembers.length } });
+      } catch (auditErr) { console.error('Audit log failed for deploy:', auditErr); }
       setDeployModalOpen(false);
       setSelectedReport(null);
       fetchReports();
       fetchResponders();
-    } catch (err) {
-      console.error('Deploy error:', err);
-    }
+    } catch (err) { console.error('Deploy error:', err); }
   };
 
   const handleTrackResponder = async (report) => {
     if (!report) return;
     const leadId = report.assigned_responder_id;
     if (leadId) {
-      const { data: responder } = await supabase
-        .from('responders').select('*').eq('id', leadId).single();
+      const { data: responder } = await supabase.from('responders').select('*').eq('id', leadId).single();
       if (responder) {
         setTrackingReport(report);
         setTrackingResponder(responder);
@@ -1401,12 +1469,8 @@ export default function Reports() {
         return;
       }
     }
-    const fallback = responders.find(r => r.status === 'busy' && report.assigned_to?.includes(r.name))
-                  || responders.find(r => r.status === 'busy');
-    if (!fallback) {
-      alert('No active responder found for this report. The responder may not have GPS enabled yet.');
-      return;
-    }
+    const fallback = responders.find(r => r.status === 'busy' && report.assigned_to?.includes(r.name)) || responders.find(r => r.status === 'busy');
+    if (!fallback) { alert('No active responder found for this report. The responder may not have GPS enabled yet.'); return; }
     setTrackingReport(report);
     setTrackingResponder(fallback);
     setTrackingModalOpen(true);
@@ -1424,7 +1488,6 @@ export default function Reports() {
 
   return (
     <div className="p-6 space-y-6 min-h-screen bg-slate-50">
-      {/* Header */}
       <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
           <div className="flex items-center gap-2 text-xs text-slate-500 mb-1 uppercase tracking-widest font-semibold">
@@ -1439,7 +1502,6 @@ export default function Reports() {
         </button>
       </div>
 
-      {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         {[
           { label: 'Total Filed',  value: stats.total,      icon: FileText,      color: 'text-slate-700' },
@@ -1460,7 +1522,6 @@ export default function Reports() {
         ))}
       </div>
 
-      {/* Filters */}
       <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm">
         <div className="flex flex-col md:flex-row gap-3">
           <div className="relative flex-1">
@@ -1497,7 +1558,6 @@ export default function Reports() {
         </p>
       </div>
 
-      {/* Report Grid */}
       {loading ? (
         <div className="flex items-center justify-center py-20">
           <Loader className="w-7 h-7 animate-spin text-slate-400" />
@@ -1512,76 +1572,35 @@ export default function Reports() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {filteredReports.map(report => (
-            <ReportCard
-              key={report.id}
-              report={report}
-              onView={handleViewReport}
-              onEdit={setEditingReport}
-              onDelete={handleDelete}
-              canEdit={canEdit}
-              aiInsights={aiDataMap[report.id]}
-              onTrackResponder={handleTrackResponder}
-              onUserAction={handleOpenUserAction}
-            />
+            <ReportCard key={report.id} report={report} onView={handleViewReport} onEdit={setEditingReport}
+              onDelete={handleDelete} canEdit={canEdit} aiInsights={aiDataMap[report.id]}
+              onTrackResponder={handleTrackResponder} onUserAction={handleOpenUserAction} />
           ))}
         </div>
       )}
 
-      {/* Modals */}
       {selectedReport && (
-        <ViewReportModal
-          report={selectedReport}
-          onClose={() => setSelectedReport(null)}
-          onEditStatus={r => setEditingReport(r)}
-          canEdit={canEdit}
+        <ViewReportModal report={selectedReport} onClose={() => setSelectedReport(null)}
+          onEditStatus={r => setEditingReport(r)} canEdit={canEdit}
           onDeployResponder={r => { setSelectedReport(r); setDeployModalOpen(true); }}
-          onRunAssessment={handleRunAssessment}
-          scanning={scanningId === selectedReport.id}
-          aiData={aiDataMap[selectedReport.id] || null}
-          onAcceptAI={handleAcceptAI}
-          acceptingAI={acceptingAI}
-          onDismissAI={() => handleDismissAI(selectedReport?.id)}
-          onUserAction={handleOpenUserAction}
-        />
+          onRunAssessment={handleRunAssessment} scanning={scanningId === selectedReport.id}
+          aiData={aiDataMap[selectedReport.id] || null} onAcceptAI={handleAcceptAI}
+          acceptingAI={acceptingAI} onDismissAI={() => handleDismissAI(selectedReport?.id)}
+          onUserAction={handleOpenUserAction} />
       )}
-
       {editingReport && (
-        <EditReportModal
-          report={editingReport}
-          onClose={() => setEditingReport(null)}
-          onSave={handleSaveEdit}
-        />
+        <EditReportModal report={editingReport} onClose={() => setEditingReport(null)} onSave={handleSaveEdit} />
       )}
-
       {deployModalOpen && selectedReport && (
-        <DeployTeamModal
-          report={selectedReport}
-          responders={responders}
-          onClose={() => setDeployModalOpen(false)}
-          onDeploy={handleDeploy}
-          aiSuggestedTeam={aiDataMap[selectedReport.id]?.suggestedTeam || null}
-        />
+        <DeployTeamModal report={selectedReport} responders={responders} onClose={() => setDeployModalOpen(false)}
+          onDeploy={handleDeploy} aiSuggestedTeam={aiDataMap[selectedReport.id]?.suggestedTeam || null} />
       )}
-
       {trackingModalOpen && trackingReport && trackingResponder && (
-        <TrackResponderModal
-          report={trackingReport}
-          responder={trackingResponder}
-          onClose={() => {
-            setTrackingModalOpen(false);
-            setTrackingReport(null);
-            setTrackingResponder(null);
-          }}
-        />
+        <TrackResponderModal report={trackingReport} responder={trackingResponder}
+          onClose={() => { setTrackingModalOpen(false); setTrackingReport(null); setTrackingResponder(null); }} />
       )}
-
-      {/* ← NEW: User Action Modal */}
       {userActionModal && (
-        <UserActionModal
-          user={userActionModal}
-          onClose={() => setUserActionModal(null)}
-          onSuccess={fetchReports}
-        />
+        <UserActionModal user={userActionModal} onClose={() => setUserActionModal(null)} onSuccess={fetchReports} />
       )}
     </div>
   );
