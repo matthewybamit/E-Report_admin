@@ -1,5 +1,6 @@
 // src/pages/Reports.jsx
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { analyzeJurisdiction, buildReportShareText } from '../utils/barangayJurisdiction';
 import { supabase } from '../config/supabase';
 import Groq from 'groq-sdk';
 import {
@@ -7,7 +8,7 @@ import {
   Phone, Mail, MessageSquare, CheckCircle, AlertCircle, XCircle, Wrench,
   Heart, Shield, Leaf, AlertTriangle, Send, Bot, Loader, Zap, Bell,
   Navigation, Radio, Video, Images, ChevronDown, ChevronUp, Maximize2,
-  Flag, Clock3, Users, BarChart2, Car, Crosshair, Route,
+  Flag, Clock3, Users, BarChart2, Car, Crosshair, Route, Share2, ExternalLink,
 } from 'lucide-react';
 import { logAuditAction } from '../utils/auditLogger';
 import UserActionModal from '../components/UserActionModal';
@@ -113,6 +114,120 @@ function ResponderStatusBadge({ status, reportStatus }) {
     <span className={`inline-flex items-center px-2.5 py-1 rounded text-xs font-semibold ${s.bg} ${s.text} border border-current/20 tracking-wide`}>
       <Icon className="w-3 h-3 mr-1.5" />{s.label}
     </span>
+  );
+}
+
+
+
+// ─── Jurisdiction Banner + Share ─────────────────────────────────────────────
+// Receives pre-computed jurisdictionResult from the parent (set on view open).
+function JurisdictionBanner({ jurisdictionResult, scanning, incident, buildShareText }) {
+  const [shareResult, setShareResult] = useState(null);
+
+  if (scanning) return (
+    <div className="border border-amber-200 rounded-lg bg-amber-50 px-4 py-3 flex items-center gap-3">
+      <Loader className="w-4 h-4 text-amber-500 animate-spin shrink-0" />
+      <div>
+        <p className="text-xs font-bold text-amber-800 uppercase tracking-widest">Checking Jurisdiction</p>
+        <p className="text-xs text-amber-600 mt-0.5">AI is analysing location coordinates...</p>
+      </div>
+    </div>
+  );
+
+  if (!jurisdictionResult?.isOutside) return null;
+
+  const { detectedBarangay, detectedCity, detectedProvince, confidence, reasoning, contactSuggestion } = jurisdictionResult;
+  const shareText = buildShareText(incident, jurisdictionResult);
+  const mapsUrl   = incident.latitude && incident.longitude
+    ? `https://www.google.com/maps/search/?api=1&query=${incident.latitude},${incident.longitude}`
+    : '';
+
+  const confidenceColor = {
+    high:   'text-red-700 bg-red-100 border-red-300',
+    medium: 'text-amber-700 bg-amber-100 border-amber-300',
+    low:    'text-slate-600 bg-slate-100 border-slate-300',
+  }[confidence] || 'text-amber-700 bg-amber-100 border-amber-300';
+
+  const handleShare = async () => {
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: detectedBarangay
+            ? `Incident in ${detectedBarangay} — Needs Forwarding`
+            : 'Incident Outside Salvacion — Needs Forwarding',
+          text: shareText,
+          url:  mapsUrl,
+        });
+        setShareResult('shared');
+        setTimeout(() => setShareResult(null), 3000);
+        return;
+      } catch (e) {
+        if (e.name === 'AbortError') return;
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(shareText);
+      setShareResult('copied');
+      setTimeout(() => setShareResult(null), 3000);
+    } catch {
+      setShareResult('error');
+      setTimeout(() => setShareResult(null), 3000);
+    }
+  };
+
+  return (
+    <div className="border border-amber-300 rounded-lg overflow-hidden">
+      <div className="bg-amber-600 px-4 py-2.5 flex items-center gap-2.5">
+        <AlertTriangle className="w-4 h-4 text-white shrink-0" />
+        <p className="text-xs font-bold text-white uppercase tracking-widest flex-1">
+          Outside Salvacion Jurisdiction
+        </p>
+        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border text-xs font-bold ${confidenceColor}`}>
+          {confidence} confidence
+        </span>
+      </div>
+
+      <div className="bg-amber-50 px-4 py-3 space-y-3">
+        <div className="flex items-start gap-2.5">
+          <MapPin className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <p className="text-sm font-bold text-amber-900">
+              {detectedBarangay
+                ? `${detectedBarangay}${detectedCity ? ', ' + detectedCity : ''}${detectedProvince ? ', ' + detectedProvince : ''}`
+                : 'Unknown area — outside Salvacion boundaries'}
+            </p>
+            {reasoning && (
+              <p className="text-xs text-amber-700 mt-0.5 leading-relaxed">{reasoning}</p>
+            )}
+          </div>
+        </div>
+
+        {contactSuggestion && (
+          <div className="flex items-start gap-2 text-xs text-amber-900 bg-white border border-amber-200 rounded px-3 py-2">
+            <Users className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+            <span>{contactSuggestion}</span>
+          </div>
+        )}
+
+        <button
+          onClick={handleShare}
+          className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded text-sm font-bold transition-all ${
+            shareResult === 'shared' ? 'bg-green-600 text-white' :
+            shareResult === 'copied' ? 'bg-slate-700 text-white' :
+            shareResult === 'error'  ? 'bg-red-600 text-white'   :
+            'bg-amber-600 hover:bg-amber-700 text-white'
+          }`}
+        >
+          {shareResult === 'shared' ? <><CheckCircle className="w-4 h-4" />Shared!</>         :
+           shareResult === 'copied' ? <><CheckCircle className="w-4 h-4" />Copied to Clipboard</> :
+           shareResult === 'error'  ? <><AlertCircle className="w-4 h-4" />Share Failed — Try Again</> :
+           <><Share2 className="w-4 h-4" />Forward to Correct Barangay</>}
+        </button>
+        <p className="text-xs text-amber-600 text-center">
+          Shares incident details, GPS coordinates, and a Google Maps link
+        </p>
+      </div>
+    </div>
   );
 }
 
@@ -1020,6 +1135,11 @@ function ReportCard({ report, onView, onEdit, onDelete, canEdit, aiInsights, onT
           <PriorityBadge priority={report.priority} />
           <StatusBadge status={report.status} />
           {report.responder_status && <ResponderStatusBadge status={report.responder_status} reportStatus={report.status} />}
+          {report._outsideSalvacion && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded border text-xs font-bold bg-amber-50 text-amber-700 border-amber-300">
+              <AlertTriangle className="w-3 h-3" />Outside Salvacion
+            </span>
+          )}
         </div>
         {hasFraudAI && (
           <div className={`inline-flex items-center gap-1.5 px-2 py-1 rounded border text-xs font-semibold mb-3 ${verdictColor}`}>
@@ -1070,7 +1190,7 @@ function ReportCard({ report, onView, onEdit, onDelete, canEdit, aiInsights, onT
 }
 
 // ─── View Report Modal ────────────────────────────────────────────────────────
-function ViewReportModal({ report, onClose, onEditStatus, canEdit, onDeployResponder, onRunAssessment, scanning, aiData, onAcceptAI, acceptingAI, onDismissAI, onUserAction }) {
+function ViewReportModal({ report, onClose, onEditStatus, canEdit, onDeployResponder, onRunAssessment, scanning, aiData, onAcceptAI, acceptingAI, onDismissAI, onUserAction, jurisdictionResult, scanningJurisdiction }) {
   const [isImageZoomed,  setIsImageZoomed]  = useState(false);
   const [zoomedImageUrl, setZoomedImageUrl] = useState(null);
 
@@ -1112,6 +1232,8 @@ function ViewReportModal({ report, onClose, onEditStatus, canEdit, onDeployRespo
         <div className="p-6 space-y-5">
           <AIAssessmentPanel aiData={aiData} onAccept={() => onAcceptAI(report.id)} onDismiss={onDismissAI}
             accepting={acceptingAI} scanning={scanning} onRunAssessment={() => onRunAssessment(report)} canRun={canEdit} />
+
+          <JurisdictionBanner jurisdictionResult={jurisdictionResult} scanning={scanningJurisdiction} incident={report} buildShareText={buildReportShareText} />
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <div className="border border-slate-200 rounded-lg overflow-hidden">
@@ -1324,6 +1446,8 @@ export default function Reports() {
   const [scanningId,        setScanningId]        = useState(null);
   const [acceptingAI,       setAcceptingAI]       = useState(false);
   const [userActionModal,   setUserActionModal]   = useState(null);
+  const [jurisdictionMap,   setJurisdictionMap]   = useState({}); // { [reportId]: result }
+  const [scanningJurisdictionId, setScanningJurisdictionId] = useState(null);
 
   useEffect(() => { fetchReports(); fetchResponders(); checkUserRole(); }, []);
   useEffect(() => { filterReports(); }, [reports, searchQuery, statusFilter, priorityFilter]);
@@ -1367,6 +1491,33 @@ export default function Reports() {
     setSelectedReport(report);
     if (report.ai_verdict && !aiDataMap[report.id]) {
       setAiDataMap(prev => ({ ...prev, [report.id]: { fraud: { verdict: report.ai_verdict, score: report.ai_score, explanation: report.ai_notes } } }));
+    }
+    // Auto-run jurisdiction check if we have coords and haven't checked yet
+    if (report.latitude && report.longitude && !jurisdictionMap[report.id]) {
+      handleJurisdictionCheck(report);
+    }
+  };
+
+  const handleJurisdictionCheck = async (report) => {
+    if (!report.latitude || !report.longitude) return;
+    setScanningJurisdictionId(report.id);
+    try {
+      const result = await analyzeJurisdiction({
+        lat:          report.latitude,
+        lng:          report.longitude,
+        locationText: report.location || '',
+      });
+      if (result) {
+        setJurisdictionMap(prev => ({ ...prev, [report.id]: result }));
+        // Mark card with outside flag for badge
+        if (result.isOutside) {
+          setReports(prev => prev.map(r => r.id === report.id ? { ...r, _outsideSalvacion: true } : r));
+        }
+      }
+    } catch (err) {
+      console.error('Jurisdiction check error:', err);
+    } finally {
+      setScanningJurisdictionId(null);
     }
   };
 
@@ -1586,7 +1737,9 @@ export default function Reports() {
           onRunAssessment={handleRunAssessment} scanning={scanningId === selectedReport.id}
           aiData={aiDataMap[selectedReport.id] || null} onAcceptAI={handleAcceptAI}
           acceptingAI={acceptingAI} onDismissAI={() => handleDismissAI(selectedReport?.id)}
-          onUserAction={handleOpenUserAction} />
+          onUserAction={handleOpenUserAction}
+          jurisdictionResult={jurisdictionMap[selectedReport.id] || null}
+          scanningJurisdiction={scanningJurisdictionId === selectedReport.id} />
       )}
       {editingReport && (
         <EditReportModal report={editingReport} onClose={() => setEditingReport(null)} onSave={handleSaveEdit} />
