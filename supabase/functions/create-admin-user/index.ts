@@ -1,3 +1,4 @@
+// supabase/functions/create-admin-user/index.ts
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -23,17 +24,17 @@ serve(async (req) => {
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     const supabaseUrl    = Deno.env.get('SUPABASE_URL') ?? ''
 
+    // ── Both clients use service role — bypasses RLS entirely ─────────────────
     const authCheckClient = createClient(supabaseUrl, serviceRoleKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     })
 
     const adminClient = createClient(supabaseUrl, serviceRoleKey, {
       auth: { autoRefreshToken: false, persistSession: false },
-      global: {
-        headers: { Authorization: `Bearer ${serviceRoleKey}` },
-      },
+      global: { headers: { Authorization: `Bearer ${serviceRoleKey}` } },
     })
 
+    // ── Verify the caller's session token ─────────────────────────────────────
     const token = authHeader.replace('Bearer ', '')
     const { data: { user: callerUser }, error: callerError } =
       await authCheckClient.auth.getUser(token)
@@ -45,15 +46,44 @@ serve(async (req) => {
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
-    console.log('CALLER VERIFIED:', callerUser.id)
+    console.log('CALLER VERIFIED:', callerUser.id, callerUser.email)
 
-    const { data: callerAdmin, error: adminCheckError } = await adminClient
+    // ── Role check ─────────────────────────────────────────────────────────────
+    // FIX: Try by auth_user_id first. If that returns nothing (admin was created
+    // manually and auth_user_id is NULL), fall back to matching by email.
+    // Then self-heal the auth_user_id so future calls work via the fast path.
+    let { data: callerAdmin, error: adminCheckError } = await adminClient
       .from('admin_users')
-      .select('role')
+      .select('id, role, auth_user_id')
       .eq('auth_user_id', callerUser.id)
       .maybeSingle()
 
-    console.log('ROLE CHECK:', callerAdmin?.role, adminCheckError?.message)
+    console.log('ROLE CHECK (by auth_user_id):', callerAdmin?.role, adminCheckError?.message)
+
+    if (!callerAdmin && !adminCheckError) {
+      // Fallback: look up by email
+      console.log('auth_user_id lookup returned nothing — trying email fallback...')
+      const { data: adminByEmail, error: emailCheckError } = await adminClient
+        .from('admin_users')
+        .select('id, role, auth_user_id')
+        .eq('email', callerUser.email)
+        .maybeSingle()
+
+      console.log('ROLE CHECK (by email):', adminByEmail?.role, emailCheckError?.message)
+
+      if (adminByEmail) {
+        callerAdmin = adminByEmail
+
+        // Self-heal: patch auth_user_id so future calls skip the fallback
+        if (!adminByEmail.auth_user_id) {
+          const { error: patchErr } = await adminClient
+            .from('admin_users')
+            .update({ auth_user_id: callerUser.id })
+            .eq('id', adminByEmail.id)
+          console.log('PATCHED auth_user_id:', patchErr?.message ?? 'OK')
+        }
+      }
+    }
 
     if (adminCheckError) {
       return new Response(
@@ -63,12 +93,14 @@ serve(async (req) => {
     }
 
     if (callerAdmin?.role !== 'system_administrator') {
+      console.log('FORBIDDEN — caller role:', callerAdmin?.role ?? 'not found')
       return new Response(
-        JSON.stringify({ error: `Forbidden: caller role is "${callerAdmin?.role ?? 'null'}"` }),
+        JSON.stringify({ error: `Forbidden: caller role is "${callerAdmin?.role ?? 'not found in admin_users'}"` }),
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
+    // ── Parse + validate request body ─────────────────────────────────────────
     const body = await req.json()
     const { full_name, email, password, role, user_type, team } = body
     console.log('BODY:', { full_name, email, role, user_type, team })
@@ -86,13 +118,12 @@ serve(async (req) => {
       )
     }
 
-    // ── Step 1: Create auth user ──────────────────────────────────────────────
+    // ── Step 1: Create auth user ───────────────────────────────────────────────
     const { data: authData, error: authError } =
       await adminClient.auth.admin.createUser({
         email,
         password,
         email_confirm: true,
-        // ✅ ADDED: tells handle_new_user() trigger to skip public.users insert
         user_metadata: {
           account_type: user_type === 'responder' ? 'responder' : 'admin',
           full_name,
@@ -112,27 +143,8 @@ serve(async (req) => {
     // ── Step 2: Branch by user_type ───────────────────────────────────────────
     if (user_type === 'responder') {
 
-      console.log('UPDATING public.users, id:', newUserId)
-      const { error: userUpdateError } = await adminClient
-        .from('users')
-        .update({
-          full_name,
-          account_type:   'responder',
-          account_status: 'active',
-          is_verified:    true,
-        })
-        .eq('id', newUserId)
-      console.log('users UPDATE RESULT:', userUpdateError?.message ?? 'OK')
-
-      if (userUpdateError) {
-        await adminClient.auth.admin.deleteUser(newUserId)
-        return new Response(
-          JSON.stringify({ error: `users update failed: ${userUpdateError.message}` }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        )
-      }
-
-      console.log('UPSERTING public.users (fallback), id:', newUserId)
+      // Upsert into public.users (handles both trigger-created and missing rows)
+      console.log('UPSERTING public.users, id:', newUserId)
       const { error: userUpsertError } = await adminClient
         .from('users')
         .upsert({
@@ -153,6 +165,7 @@ serve(async (req) => {
         )
       }
 
+      // Insert into responders table
       console.log('INSERTING INTO responders table, id:', newUserId)
       const { error: responderInsertError } = await adminClient
         .from('responders')
@@ -175,11 +188,12 @@ serve(async (req) => {
 
     } else {
 
+      // Insert into admin_users — always set auth_user_id so future role checks work
       console.log('INSERTING INTO admin_users table, id:', newUserId)
       const { error: adminInsertError } = await adminClient
         .from('admin_users')
         .insert({
-          auth_user_id: newUserId,
+          auth_user_id: newUserId,   // ← always populated now
           email,
           full_name,
           role:         role.toLowerCase(),

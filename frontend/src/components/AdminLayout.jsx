@@ -7,6 +7,7 @@ import {
   ChevronRight, ChevronDown, Camera, AlertCircle, CheckCircle,
   Clock, Trash2, Shield, UserCog, Ambulance, Flame, AlertTriangle,
   MapPin, ExternalLink, ClipboardList, Send, Loader2, Radio, Minimize2,
+  Star,   // ← Feedback page icon
 } from 'lucide-react';
 import { supabase } from '../config/supabase';
 import { logAuditAction } from '../utils/auditLogger';
@@ -250,7 +251,6 @@ const fmtDateGroup = (iso) => {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 };
 
-// ─── Single conversation pane ─────────────────────────────────────────────────
 function ConversationPane({ thread, adminUser, adminRole, onBack }) {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading]   = useState(true);
@@ -321,7 +321,6 @@ function ConversationPane({ thread, adminUser, adminRole, onBack }) {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Thread header */}
       <div className={`flex items-center gap-2 px-3 py-2.5 border-b ${accentBorder} bg-slate-800/80 flex-shrink-0`}>
         <button onClick={onBack} className="text-slate-400 hover:text-white p-1 rounded transition-colors">
           <ChevronRight className="w-4 h-4 rotate-180" />
@@ -333,7 +332,6 @@ function ConversationPane({ thread, adminUser, adminRole, onBack }) {
         </div>
       </div>
 
-      {/* Messages */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto chat-scroll px-3 py-2 space-y-1" style={{ minHeight: 0 }}>
         {loading ? (
           <div className="flex items-center justify-center py-10"><Loader2 className="w-4 h-4 text-slate-500 animate-spin" /></div>
@@ -371,7 +369,6 @@ function ConversationPane({ thread, adminUser, adminRole, onBack }) {
         )}
       </div>
 
-      {/* Input */}
       <div className="flex items-end gap-2 px-3 py-2.5 border-t border-slate-700/60 flex-shrink-0">
         <textarea
           ref={inputRef} value={input} onChange={e => setInput(e.target.value)} onKeyDown={handleKeyDown}
@@ -389,7 +386,6 @@ function ConversationPane({ thread, adminUser, adminRole, onBack }) {
   );
 }
 
-// ─── Thread list item ─────────────────────────────────────────────────────────
 function ThreadItem({ thread, onClick }) {
   const accentColor = thread.type === 'emergency' ? 'text-red-400'  : 'text-amber-400';
   const dotColor    = thread.type === 'emergency' ? 'bg-red-500'    : 'bg-amber-500';
@@ -413,7 +409,6 @@ function ThreadItem({ thread, onClick }) {
   );
 }
 
-// ─── The floating widget itself ───────────────────────────────────────────────
 function GlobalChatWidget({ adminUser, adminRole }) {
   const [open, setOpen]                     = useState(false);
   const [threads, setThreads]               = useState([]);
@@ -465,7 +460,6 @@ function GlobalChatWidget({ adminUser, adminRole }) {
 
   return (
     <>
-      {/* ── Floating button ── fixed bottom-right, always visible ── */}
       <button
         onClick={() => { setOpen(v => !v); if (!open) loadThreads(); }}
         title="Responder Chat"
@@ -482,14 +476,12 @@ function GlobalChatWidget({ adminUser, adminRole }) {
         )}
       </button>
 
-      {/* ── Chat panel — slides up above the button ── */}
       {open && (
         <div
           className="fixed bottom-24 right-6 z-[9997] w-80 bg-slate-900 border border-slate-700
             rounded-2xl shadow-2xl flex flex-col overflow-hidden chat-slide-up"
           style={{ height: '480px' }}
         >
-          {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-slate-700 bg-slate-800 flex-shrink-0">
             <div className="flex items-center gap-2">
               <MessageSquare className="w-4 h-4 text-blue-400" />
@@ -506,7 +498,6 @@ function GlobalChatWidget({ adminUser, adminRole }) {
             </div>
           </div>
 
-          {/* Body */}
           <div className="flex-1 min-h-0">
             {activeThread ? (
               <ConversationPane thread={activeThread} adminUser={adminUser} adminRole={adminRole} onBack={() => setActiveThread(null)} />
@@ -559,7 +550,7 @@ export default function AdminLayout() {
   const [alertPanelOpen, setAlertPanelOpen]                 = useState(false);
   const [user, setUser]                                     = useState(null);
   const [userRole, setUserRole]                             = useState(null);
-  const [adminUser, setAdminUser]                           = useState(null); // ← new: full row for chat widget
+  const [adminUser, setAdminUser]                           = useState(null);
   const [reportsDropdownOpen, setReportsDropdownOpen]       = useState(false);
   const [emergencyDropdownOpen, setEmergencyDropdownOpen]   = useState(false);
   const [adminAlerts, setAdminAlerts]                       = useState([]);
@@ -620,10 +611,9 @@ export default function AdminLayout() {
       const { data: { user } } = await supabase.auth.getUser();
       setUser(user);
       if (user) {
-        // ← Changed: select('*') instead of select('role') so chat widget gets full_name etc.
         const { data: adminData } = await supabase.from('admin_users').select('*').eq('auth_user_id', user.id).single();
         setUserRole(adminData?.role || null);
-        setAdminUser(adminData || null); // ← new line
+        setAdminUser(adminData || null);
         fetchAdminAlerts(user.id);
         fetchUrgentEmergencies();
         subscribeToAdminAlerts(user.id);
@@ -689,18 +679,18 @@ export default function AdminLayout() {
     if (location.pathname === '/emergency' || location.pathname === '/emergency-evidence') setEmergencyDropdownOpen(true);
   }, [location.pathname]);
 
+  // ── Nav items — Feedback added after Analytics ────────────────────────────
   const ALL_NAV_ITEMS = [
-    { icon: Home,          label: 'Dashboard',    path: '/dashboard',     description: 'Overview'          },
-    { icon: FileText,      label: 'Reports',      path: '/reports',       description: 'User reports',     hasDropdown: true, submenu: [{ icon: Camera, label: 'Evidence', path: '/evidence', description: 'Completion photos' }] },
-    { icon: Bell,          label: 'Emergency',    path: '/emergency',     description: 'Active alerts',    badge: urgentEmergenciesCount, urgent: urgentEmergenciesCount > 0, hasDropdown: true, submenu: [{ icon: Camera, label: 'Evidence', path: '/emergency-evidence', description: 'Completion photos' }] },
-    // { icon: Heart,         label: 'Medical',      path: '/medical',       description: 'Health requests'  },
-    { icon: ClipboardList, label: 'Services',     path: '/services',      description: 'Document requests'},
-    { icon: Users,         label: 'Residents',    path: '/residents',     description: 'Manage users',    sysAdminOnly: true },
-    { icon: MessageSquare, label: 'Announcements',path: '/announcements', description: 'Community posts'  },
-    { icon: BarChart3,     label: 'Analytics',    path: '/analytics',     description: 'Insights'         },
-    { icon: Shield,        label: 'Audit Logs',   path: '/audit-logs',    description: 'Track actions',   sysAdminOnly: true },
-    { icon: UserCog,       label: 'Admin Users',  path: '/admin-users',   description: 'Manage admins',   sysAdminOnly: true },
-    // { icon: Settings,      label: 'Settings',     path: '/settings',      description: 'Configure'        },
+    { icon: Home,          label: 'Dashboard',    path: '/dashboard',     description: 'Overview'            },
+    { icon: FileText,      label: 'Reports',      path: '/reports',       description: 'User reports',       hasDropdown: true, submenu: [{ icon: Camera, label: 'Evidence', path: '/evidence', description: 'Completion photos' }] },
+    { icon: Bell,          label: 'Emergency',    path: '/emergency',     description: 'Active alerts',      badge: urgentEmergenciesCount, urgent: urgentEmergenciesCount > 0, hasDropdown: true, submenu: [{ icon: Camera, label: 'Evidence', path: '/emergency-evidence', description: 'Completion photos' }] },
+    { icon: ClipboardList, label: 'Services',     path: '/services',      description: 'Document requests'  },
+    { icon: Users,         label: 'Residents',    path: '/residents',     description: 'Manage users',      sysAdminOnly: true },
+    { icon: MessageSquare, label: 'Announcements',path: '/announcements', description: 'Community posts'    },
+    { icon: BarChart3,     label: 'Analytics',    path: '/analytics',     description: 'Insights'           },
+    { icon: Star,          label: 'Feedback',     path: '/feedback',      description: 'Ratings & reviews'  }, // ← NEW
+    { icon: Shield,        label: 'Audit Logs',   path: '/audit-logs',    description: 'Track actions',     sysAdminOnly: true },
+    { icon: UserCog,       label: 'Admin Users',  path: '/admin-users',   description: 'Manage admins',     sysAdminOnly: true },
   ];
 
   const navItems          = ALL_NAV_ITEMS.filter(item => !item.sysAdminOnly || isSysAdmin);
@@ -728,7 +718,6 @@ export default function AdminLayout() {
   return (
     <div className="min-h-screen bg-slate-50 flex">
 
-      {/* ── Sidebar ── */}
       <aside className={`fixed lg:sticky lg:top-0 lg:h-screen inset-y-0 left-0 z-50 w-64 bg-slate-900 border-r border-slate-700 flex flex-col transform transition-all duration-300 ease-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
         <div className="flex-shrink-0 px-5 py-4 border-b border-slate-700 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -813,9 +802,7 @@ export default function AdminLayout() {
 
       {sidebarOpen && <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />}
 
-      {/* ── Main Content ── */}
       <div className="flex-1 flex flex-col min-h-screen min-w-0">
-
         <header className={`bg-white border-b border-slate-200 sticky top-0 z-30 transition-shadow duration-300 ${scrolled ? 'shadow-md' : 'shadow-sm'}`}>
           <div className="flex items-center justify-between px-6 py-3.5">
             <div className="flex items-center gap-4">
@@ -908,7 +895,6 @@ export default function AdminLayout() {
         </footer>
       </div>
 
-      {/* ── Emergency Toast Stack (top-right) ── */}
       <div className="fixed top-4 right-4 z-[9999] flex flex-col gap-3 pointer-events-none">
         {emergencyToasts.map((emergency) => (
           <div key={emergency.id} className="pointer-events-auto">
@@ -917,14 +903,7 @@ export default function AdminLayout() {
         ))}
       </div>
 
-      {/*
-        ── Global Floating Chat Widget ──────────────────────────────────────────
-        Renders a fixed bottom-right button on EVERY page inside this layout.
-        The button opens a slide-up panel listing all active incident threads.
-        adminUser must be the full admin_users row (needs auth_user_id + full_name).
-      */}
       <GlobalChatWidget adminUser={adminUser} adminRole={userRole} />
-
     </div>
   );
 }

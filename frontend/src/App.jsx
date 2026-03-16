@@ -3,7 +3,6 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import ProtectedRoute from './utils/ProtectedRoute';
 
-// Import Pages
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Reports from './pages/Reports';
@@ -17,20 +16,18 @@ import AuditLogs from './pages/AuditLogs';
 import AdminManagement from './pages/AdminManagement';
 import Analytics from './pages/Analytics';
 import Services from './pages/Services';
-import Verify from './pages/Verify'; // ← PUBLIC: no auth required
+import Verify from './pages/Verify';
+import Feedback from './pages/Feedback';        // ← added
 
-// Layout Component
 import AdminLayout from './components/AdminLayout';
 
 function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* ── Fully public routes — NO ProtectedRoute wrapper ── */}
-        <Route path="/login" element={<Login />} />
-        <Route path="/verify/:id" element={<Verify />} /> {/* QR scan target */}
+        <Route path="/login"       element={<Login />} />
+        <Route path="/verify/:id"  element={<Verify />} />
 
-        {/* ── Protected admin routes ── */}
         <Route
           path="/"
           element={
@@ -52,9 +49,9 @@ function App() {
           <Route path="admin-users"        element={<AdminManagement />} />
           <Route path="analytics"          element={<Analytics />} />
           <Route path="services"           element={<Services />} />
+          <Route path="feedback"           element={<Feedback />} />  {/* ← added */}
         </Route>
 
-        {/* Catch-all → dashboard (requires auth, so unauthed users land on login) */}
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
 
