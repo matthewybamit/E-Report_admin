@@ -15,8 +15,10 @@ import {
 } from 'lucide-react';
 
 // ─── Map Config ───────────────────────────────────────────────────────────────
-const QC_CENTER = [14.6760, 121.0437];
-const INITIAL_ZOOM = 13;
+// Barangay Salvacion, La Loma, Quezon City, Metro Manila, Philippines
+// Barangay Salvacion, La Loma, Quezon City (PhilAtlas: 14.6268, 120.9942)
+const SALVACION_CENTER = [14.6268, 120.9942];
+const INITIAL_ZOOM     = 16;  // tight zoom for a small urban barangay
 
 const createCustomIcon = (color) => L.divIcon({
   className: '',
@@ -50,14 +52,24 @@ const greenIcon  = createCustomIcon('#22c55e');
 const blueIcon   = createCustomIcon('#3b82f6');
 const orangeIcon = createCustomIcon('#f97316');
 
-// ─── Barangay Salvacion Boundary ──────────────────────────────────────────────
+// ─── Barangay Salvacion Boundary (La Loma, Quezon City, Metro Manila) ───────────
+// Center confirmed by PhilAtlas: 14.6268, 120.9942
+// Address: 74 Bulusan St., Brgy. Salvacion, La Loma, Quezon City 1114
+// NOTE: Polygon is approximate. Replace with official PSA/PHILGIS shapefile for production.
 const SALVACION_BOUNDARY = [
-  [14.6801, 121.0389],[14.6812, 121.0401],[14.6825, 121.0415],
-  [14.6834, 121.0428],[14.6840, 121.0445],[14.6838, 121.0462],
-  [14.6830, 121.0475],[14.6818, 121.0483],[14.6804, 121.0487],
-  [14.6789, 121.0484],[14.6776, 121.0476],[14.6767, 121.0463],
-  [14.6763, 121.0448],[14.6765, 121.0431],[14.6772, 121.0416],
-  [14.6783, 121.0404],[14.6794, 121.0394],[14.6801, 121.0389],
+  [14.6282, 120.9928],
+  [14.6285, 120.9938],
+  [14.6283, 120.9950],
+  [14.6278, 120.9960],
+  [14.6270, 120.9965],
+  [14.6260, 120.9963],
+  [14.6252, 120.9957],
+  [14.6249, 120.9947],
+  [14.6251, 120.9935],
+  [14.6257, 120.9926],
+  [14.6265, 120.9921],
+  [14.6274, 120.9922],
+  [14.6282, 120.9928],  // close the polygon
 ];
 
 function haversineDistance([lat1, lng1], [lat2, lng2]) {
@@ -120,7 +132,6 @@ function DateFilterPanel({ datePreset, setDatePreset, customFrom, setCustomFrom,
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
-  // Close on outside click
   useEffect(() => {
     const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
     document.addEventListener('mousedown', handler);
@@ -149,7 +160,6 @@ function DateFilterPanel({ datePreset, setDatePreset, customFrom, setCustomFrom,
 
       {open && (
         <div className="absolute left-0 top-full mt-1.5 z-[600] bg-white border border-slate-200 rounded-lg shadow-xl w-64 overflow-hidden">
-          {/* Preset list */}
           <div className="p-1.5 border-b border-slate-100">
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-2 py-1">Quick Select</p>
             {DATE_PRESETS.filter(p => p.key !== 'custom').map(({ key, label }) => (
@@ -167,8 +177,6 @@ function DateFilterPanel({ datePreset, setDatePreset, customFrom, setCustomFrom,
               </button>
             ))}
           </div>
-
-          {/* Custom range */}
           <div className="p-3">
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Custom Range</p>
             <div className="space-y-2">
@@ -200,8 +208,6 @@ function DateFilterPanel({ datePreset, setDatePreset, customFrom, setCustomFrom,
               )}
             </div>
           </div>
-
-          {/* Clear */}
           {isActive && (
             <div className="border-t border-slate-100 p-2">
               <button
@@ -240,9 +246,7 @@ function FullReportModal({ report, onClose, onUpdate }) {
   const [imageZoomed, setImageZoomed] = useState(false);
   if (!report) return null;
 
-  const categoryIcons = {
-    security: Shield, infrastructure: Wrench, sanitation: Package, other: AlertTriangle
-  };
+  const categoryIcons = { security: Shield, infrastructure: Wrench, sanitation: Package, other: AlertTriangle };
   const CategoryIcon = categoryIcons[report.category] || AlertTriangle;
 
   const handleQuickAction = async (action) => {
@@ -404,9 +408,7 @@ function FullReportModal({ report, onClose, onUpdate }) {
         </div>
 
         <div className="bg-slate-50 border-t border-slate-200 px-6 py-3 flex gap-3">
-          <button onClick={onClose} className="px-4 py-2 text-sm font-semibold text-slate-700 bg-white border border-slate-300 rounded hover:bg-slate-50 transition-colors">
-            Close
-          </button>
+          <button onClick={onClose} className="px-4 py-2 text-sm font-semibold text-slate-700 bg-white border border-slate-300 rounded hover:bg-slate-50 transition-colors">Close</button>
           <button
             onClick={() => { onClose(); window.open(`/reports?reportId=${report.id}`, '_blank'); }}
             className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-800 text-white rounded text-sm font-semibold transition-colors"
@@ -555,9 +557,7 @@ function FullEmergencyModal({ emergency, onClose, onUpdate }) {
         </div>
 
         <div className="bg-slate-50 border-t border-slate-200 px-6 py-3 flex gap-3">
-          <button onClick={onClose} className="px-4 py-2 text-sm font-semibold text-slate-700 bg-white border border-slate-300 rounded hover:bg-slate-50 transition-colors">
-            Close
-          </button>
+          <button onClick={onClose} className="px-4 py-2 text-sm font-semibold text-slate-700 bg-white border border-slate-300 rounded hover:bg-slate-50 transition-colors">Close</button>
           <button
             onClick={() => { onClose(); window.open('/emergency', '_blank'); }}
             className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-800 text-white rounded text-sm font-semibold transition-colors"
@@ -583,7 +583,8 @@ function InteractiveMap({ markers, selectedMarker, onMarkerClick }) {
     const map = L.map(mapContainerRef.current, {
       zoomControl: true,
       attributionControl: false,
-    }).setView(QC_CENTER, INITIAL_ZOOM);
+    // ── FIXED: Center on Barangay Salvacion, La Loma, Quezon City ──
+    }).setView(SALVACION_CENTER, INITIAL_ZOOM);
 
     L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
       maxZoom: 20,
@@ -591,9 +592,10 @@ function InteractiveMap({ markers, selectedMarker, onMarkerClick }) {
 
     L.control.attribution({ position: 'bottomright' }).addTo(map);
 
+    // ── Barangay Salvacion boundary polygon ────────────────────────────────
     const polygon = L.polygon(SALVACION_BOUNDARY, {
-      color: '#1e40af', weight: 2, opacity: 0.85,
-      fillColor: '#3b82f6', fillOpacity: 0.08, dashArray: '6, 4',
+      color: '#1e40af', weight: 2.5, opacity: 0.9,
+      fillColor: '#3b82f6', fillOpacity: 0.1, dashArray: '6, 4',
     }).addTo(map);
 
     const perimeterM  = computeCircumference(SALVACION_BOUNDARY);
@@ -601,8 +603,9 @@ function InteractiveMap({ markers, selectedMarker, onMarkerClick }) {
     setCircumference({ meters: Math.round(perimeterM), km: perimeterKm });
 
     polygon.bindTooltip(
-      `<div style="font-family:sans-serif;font-size:11px;font-weight:700;color:#1e3a8a;text-align:center;line-height:1.5;">
+      `<div style="font-family:sans-serif;font-size:11px;font-weight:700;color:#1e3a8a;text-align:center;line-height:1.6;">
         Brgy. Salvacion<br/>
+        <span style="font-size:10px;color:#1d4ed8;font-weight:600;">La Loma, Quezon City 1114</span><br/>
         <span style="font-weight:500;color:#3b82f6;font-size:10px;">⌀ ${perimeterKm} km perimeter</span>
       </div>`,
       { permanent: true, direction: 'center', className: 'salvacion-label' }
@@ -641,7 +644,7 @@ function InteractiveMap({ markers, selectedMarker, onMarkerClick }) {
       const lm = L.marker([lat, lng], { icon }).bindPopup(
         `<div style="font-family:sans-serif;min-width:160px;">
           <strong style="font-size:12px;color:#0f172a;">${marker.title || marker.type + ' Emergency'}</strong><br/>
-          <span style="color:#64748b;font-size:11px;">${marker.location || marker.location_text || 'Quezon City'}</span>
+          <span style="color:#64748b;font-size:11px;">${marker.location || marker.location_text || 'La Loma, Quezon City'}</span>
         </div>`,
         { maxWidth: 220 }
       );
@@ -655,19 +658,24 @@ function InteractiveMap({ markers, selectedMarker, onMarkerClick }) {
     if (selectedMarker && mapInstanceRef.current) {
       const lat = selectedMarker.latitude || selectedMarker.lat;
       const lng = selectedMarker.longitude || selectedMarker.lng;
-      if (lat && lng) mapInstanceRef.current.flyTo([lat, lng], 16, { duration: 1.5 });
+      if (lat && lng) mapInstanceRef.current.flyTo([lat, lng], 17, { duration: 1.5 });
     }
   }, [selectedMarker]);
 
   return (
     <div className="relative w-full h-full rounded overflow-hidden border border-slate-200 z-0">
       <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />
+
+      {/* Map label — updated to reflect actual location */}
       <div className="absolute top-2 right-2 z-[500] bg-white/90 backdrop-blur-sm px-2.5 py-1 rounded border border-slate-200 text-xs font-semibold text-slate-600 shadow-sm">
-        Quezon City Live View
+        Brgy. Salvacion · La Loma, QC
       </div>
+
+      {/* Perimeter info card */}
       {circumference && (
-        <div className="absolute bottom-3 left-3 z-[500] bg-white/95 backdrop-blur-sm border border-blue-200 rounded-lg shadow-md px-3.5 py-2.5 min-w-[170px]">
-          <p className="text-xs font-bold text-blue-800 uppercase tracking-widest mb-1">Brgy. Salvacion</p>
+        <div className="absolute bottom-3 left-3 z-[500] bg-white/95 backdrop-blur-sm border border-blue-200 rounded-lg shadow-md px-3.5 py-2.5 min-w-[190px]">
+          <p className="text-xs font-bold text-blue-800 uppercase tracking-widest mb-0.5">Brgy. Salvacion</p>
+          <p className="text-[10px] text-blue-500 font-semibold mb-1.5">La Loma, Quezon City 1114</p>
           <div className="flex items-baseline gap-1">
             <span className="text-lg font-bold text-blue-700">{circumference.km}</span>
             <span className="text-xs font-semibold text-blue-500">km</span>
@@ -675,12 +683,14 @@ function InteractiveMap({ markers, selectedMarker, onMarkerClick }) {
           <p className="text-xs text-slate-500 mt-0.5">{circumference.meters.toLocaleString()} m boundary perimeter</p>
         </div>
       )}
+
+      {/* Legend */}
       <div className="absolute bottom-3 right-3 z-[500] bg-white/95 backdrop-blur-sm border border-slate-200 rounded-lg shadow-md px-3 py-2 space-y-1.5">
         {[
           { color: '#ef4444', label: 'Urgent'   },
-          { color: '#f97316', label: 'High'     },
-          { color: '#3b82f6', label: 'Normal'   },
-          { color: '#22c55e', label: 'Resolved' },
+          { color: '#f97316', label: 'High'      },
+          { color: '#3b82f6', label: 'Normal'    },
+          { color: '#22c55e', label: 'Resolved'  },
         ].map(({ color, label }) => (
           <div key={label} className="flex items-center gap-2">
             <span style={{ background: color }} className="w-2.5 h-2.5 rounded-full flex-shrink-0" />
@@ -743,7 +753,6 @@ export default function Dashboard() {
   const [filterPriority, setFilterPriority]     = useState('all');
   const [dataType, setDataType]                 = useState('all');
 
-  // ── Date filter state ──────────────────────────────────────────────────────
   const [datePreset,  setDatePreset]  = useState('all');
   const [customFrom,  setCustomFrom]  = useState('');
   const [customTo,    setCustomTo]    = useState('');
@@ -760,7 +769,6 @@ export default function Dashboard() {
   const [mapData, setMapData]               = useState([]);
   const [notifications, setNotifications]   = useState([]);
 
-  // ── Compute effective date range ───────────────────────────────────────────
   const getActiveDateRange = () => {
     if (datePreset === 'custom') {
       return {
@@ -785,10 +793,6 @@ export default function Dashboard() {
       const today   = new Date().toISOString().split('T')[0];
       const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
-      // Base queries respect the active date range for the primary counts
-      const base = () => ({ reports: supabase.from('reports'), emergencies: supabase.from('emergencies') });
-
-      // Helper: build a count query with optional date range
       const countQ = (table, extra = (q) => q) => {
         let q = extra(applyDateFilter(
           supabase.from(table).select('*', { count: 'exact', head: true }),
@@ -814,17 +818,16 @@ export default function Dashboard() {
         { count: lastWeekReports }
       ] = await Promise.all([
         countQ('reports'),
-        countQ('reports',      q => q.eq('priority', 'urgent').neq('status', 'resolved')),
-        countQ('reports',      q => q.eq('status', 'resolved')),
-        countQ('reports',      q => q.eq('status', 'pending')),
-        countQ('reports',      q => q.eq('status', 'in-progress')),
-        // Today count always uses calendar day regardless of date filter
+        countQ('reports',     q => q.eq('priority', 'urgent').neq('status', 'resolved')),
+        countQ('reports',     q => q.eq('status', 'resolved')),
+        countQ('reports',     q => q.eq('status', 'pending')),
+        countQ('reports',     q => q.eq('status', 'in-progress')),
         supabase.from('reports').select('*', { count: 'exact', head: true }).gte('created_at', today),
         countQ('emergencies'),
-        countQ('emergencies',  q => q.neq('status', 'resolved')),
-        countQ('emergencies',  q => q.eq('status', 'resolved')),
-        countQ('emergencies',  q => q.eq('status', 'pending')),
-        countQ('emergencies',  q => q.eq('status', 'dispatched')),
+        countQ('emergencies', q => q.neq('status', 'resolved')),
+        countQ('emergencies', q => q.eq('status', 'resolved')),
+        countQ('emergencies', q => q.eq('status', 'pending')),
+        countQ('emergencies', q => q.eq('status', 'dispatched')),
         supabase.from('emergencies').select('*', { count: 'exact', head: true }).gte('created_at', today),
         supabase.from('admin_users').select('*', { count: 'exact', head: true }),
         supabase.from('reports').select('*', { count: 'exact', head: true }).gte('created_at', weekAgo),
@@ -835,17 +838,16 @@ export default function Dashboard() {
         : 0;
 
       setStats({
-        totalReports: totalReports || 0,         totalEmergencies: totalEmergencies || 0,
-        urgentReports: urgentReports || 0,       urgentEmergencies: urgentEmergencies || 0,
-        resolvedReports: resolvedReports || 0,   resolvedEmergencies: resolvedEmergencies || 0,
-        pendingReports: pendingReports || 0,     pendingEmergencies: pendingEmergencies || 0,
+        totalReports: totalReports || 0,           totalEmergencies: totalEmergencies || 0,
+        urgentReports: urgentReports || 0,         urgentEmergencies: urgentEmergencies || 0,
+        resolvedReports: resolvedReports || 0,     resolvedEmergencies: resolvedEmergencies || 0,
+        pendingReports: pendingReports || 0,       pendingEmergencies: pendingEmergencies || 0,
         inProgressReports: inProgressReports || 0, dispatchedEmergencies: dispatchedEmergencies || 0,
         activeUsers: activeUsers || 0,
-        todayReports: todayReports || 0,         todayEmergencies: todayEmergencies || 0,
+        todayReports: todayReports || 0,           todayEmergencies: todayEmergencies || 0,
         weekTrend,
       });
 
-      // ── Recent activity with date filter ──────────────────────────────────
       let activityData = [];
       if (dataType !== 'emergencies') {
         let q = supabase.from('reports').select('*').order('created_at', { ascending: false }).limit(4);
@@ -862,7 +864,6 @@ export default function Dashboard() {
       activityData.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
       setRecentActivity(activityData.slice(0, 8));
 
-      // ── Map data with date filter ─────────────────────────────────────────
       let mapItems = [];
       if (dataType !== 'emergencies') {
         let q = supabase.from('reports').select('*').limit(50);
@@ -881,7 +882,6 @@ export default function Dashboard() {
       }
       setMapData(mapItems);
 
-      // ── Notifications (always latest, no date filter) ─────────────────────
       const urgentNotifs = [];
       const { data: uR } = await supabase.from('reports').select('*').eq('priority', 'urgent').eq('status', 'pending').order('created_at', { ascending: false }).limit(3);
       urgentNotifs.push(...(uR || []).map(r => ({ ...r, _type: 'report' })));
@@ -936,7 +936,6 @@ export default function Dashboard() {
     { label: 'Today',             value: stats.todayReports + stats.todayEmergencies,       icon: TrendingUp,  color: 'text-blue-600'   },
   ];
 
-  // Active date filter label for the stats section
   const activeDateLabel = datePreset !== 'all'
     ? DATE_PRESETS.find(p => p.key === datePreset)?.label || 'Filtered'
     : null;
@@ -953,7 +952,7 @@ export default function Dashboard() {
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Command Center</h1>
           <p className="text-sm text-slate-500 mt-0.5 flex items-center gap-1.5">
             <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-            Real-time monitoring · Quezon City
+            Real-time monitoring · Brgy. Salvacion, La Loma, QC
             {activeDateLabel && (
               <span className="ml-1 px-2 py-0.5 bg-slate-700 text-white rounded text-xs font-bold">
                 {activeDateLabel}
@@ -962,20 +961,13 @@ export default function Dashboard() {
           </p>
         </div>
         <div className="flex gap-2 flex-wrap">
-          {/* ── Date Filter ── */}
           <DateFilterPanel
-            datePreset={datePreset}
-            setDatePreset={setDatePreset}
-            customFrom={customFrom}
-            setCustomFrom={setCustomFrom}
-            customTo={customTo}
-            setCustomTo={setCustomTo}
+            datePreset={datePreset}   setDatePreset={setDatePreset}
+            customFrom={customFrom}   setCustomFrom={setCustomFrom}
+            customTo={customTo}       setCustomTo={setCustomTo}
           />
-          <button
-            onClick={fetchData}
-            disabled={loading}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-slate-700 bg-white border border-slate-300 rounded hover:bg-slate-50 transition-colors disabled:opacity-50 shadow-sm"
-          >
+          <button onClick={fetchData} disabled={loading}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-slate-700 bg-white border border-slate-300 rounded hover:bg-slate-50 transition-colors disabled:opacity-50 shadow-sm">
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />Refresh
           </button>
           <button className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-slate-700 bg-white border border-slate-300 rounded hover:bg-slate-50 transition-colors shadow-sm">
@@ -987,9 +979,7 @@ export default function Dashboard() {
       {/* ── Data Type Tabs ── */}
       <div className="bg-white border border-slate-200 rounded-lg p-1.5 shadow-sm flex gap-1.5">
         {dataTypeTabs.map(({ key, label, icon: Icon }) => (
-          <button
-            key={key}
-            onClick={() => setDataType(key)}
+          <button key={key} onClick={() => setDataType(key)}
             className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded text-xs font-bold uppercase tracking-wide transition-all ${
               dataType === key ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'
             }`}
@@ -1033,11 +1023,8 @@ export default function Dashboard() {
           </div>
           <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-2">
             {notifications.slice(0, 4).map(notif => (
-              <div
-                key={notif.id}
-                onClick={() => handleViewItem(notif)}
-                className="flex items-start gap-3 p-3 bg-slate-50 border border-slate-200 rounded cursor-pointer hover:bg-slate-100 hover:border-slate-300 transition-all"
-              >
+              <div key={notif.id} onClick={() => handleViewItem(notif)}
+                className="flex items-start gap-3 p-3 bg-slate-50 border border-slate-200 rounded cursor-pointer hover:bg-slate-100 hover:border-slate-300 transition-all">
                 <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse flex-shrink-0 mt-1.5"></div>
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-bold text-slate-800 line-clamp-1">
@@ -1065,30 +1052,22 @@ export default function Dashboard() {
             <div className="flex flex-wrap items-center gap-3">
               <Filter className="w-4 h-4 text-slate-400 flex-shrink-0" />
               <span className="text-xs font-bold text-slate-600 uppercase tracking-widest">Map Filters</span>
-              <select
-                value={filterStatus}
-                onChange={e => setFilterStatus(e.target.value)}
-                className="px-3 py-2 border border-slate-300 rounded text-xs font-medium focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white text-slate-700"
-              >
+              <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
+                className="px-3 py-2 border border-slate-300 rounded text-xs font-medium focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white text-slate-700">
                 <option value="all">All Statuses</option>
                 <option value="pending">Pending</option>
                 <option value="in-progress">In Progress</option>
                 <option value="dispatched">Dispatched</option>
                 <option value="resolved">Resolved</option>
               </select>
-              <select
-                value={filterPriority}
-                onChange={e => setFilterPriority(e.target.value)}
-                className="px-3 py-2 border border-slate-300 rounded text-xs font-medium focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white text-slate-700"
-              >
+              <select value={filterPriority} onChange={e => setFilterPriority(e.target.value)}
+                className="px-3 py-2 border border-slate-300 rounded text-xs font-medium focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white text-slate-700">
                 <option value="all">All Priorities</option>
                 <option value="low">Low</option>
                 <option value="medium">Medium</option>
                 <option value="high">High</option>
                 <option value="urgent">Urgent / Critical</option>
               </select>
-
-              {/* ── Inline date filter pill (mirrors the header one) ── */}
               <div className="ml-auto flex items-center gap-2">
                 {datePreset !== 'all' && (
                   <span className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-700 text-white rounded text-xs font-semibold">
@@ -1096,10 +1075,7 @@ export default function Dashboard() {
                     {datePreset === 'custom' && customFrom && customTo
                       ? `${customFrom.slice(0, 10)} → ${customTo.slice(0, 10)}`
                       : DATE_PRESETS.find(p => p.key === datePreset)?.label}
-                    <button
-                      onClick={() => { setDatePreset('all'); setCustomFrom(''); setCustomTo(''); }}
-                      className="ml-1 hover:text-red-300 transition-colors"
-                    >
+                    <button onClick={() => { setDatePreset('all'); setCustomFrom(''); setCustomTo(''); }} className="ml-1 hover:text-red-300 transition-colors">
                       <X className="w-3 h-3" />
                     </button>
                   </span>
@@ -1163,11 +1139,8 @@ export default function Dashboard() {
                 { label: 'View All Emergencies', icon: Ambulance, color: 'text-red-600',   path: '/emergency'  },
                 { label: 'Manage Responders',    icon: UserCheck, color: 'text-green-600', path: '/responders' },
               ].map(({ label, icon: Icon, color, path }) => (
-                <button
-                  key={label}
-                  onClick={() => navigate(path)}
-                  className="w-full flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded text-xs font-semibold text-slate-700 transition-all"
-                >
+                <button key={label} onClick={() => navigate(path)}
+                  className="w-full flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded text-xs font-semibold text-slate-700 transition-all">
                   <span className="flex items-center gap-2">
                     <Icon className={`w-4 h-4 ${color}`} />{label}
                   </span>
@@ -1205,11 +1178,8 @@ export default function Dashboard() {
                   {datePreset !== 'all' ? `No activity for ${activeDateLabel?.toLowerCase()}` : 'No recent activity'}
                 </div>
               ) : recentActivity.map(activity => (
-                <div
-                  key={activity.id}
-                  onClick={() => handleViewItem(activity)}
-                  className="p-4 hover:bg-slate-50 border-b border-slate-100 cursor-pointer transition-all flex gap-3 group last:border-b-0"
-                >
+                <div key={activity.id} onClick={() => handleViewItem(activity)}
+                  className="p-4 hover:bg-slate-50 border-b border-slate-100 cursor-pointer transition-all flex gap-3 group last:border-b-0">
                   <div className={`w-2 h-2 mt-1.5 rounded-full flex-shrink-0 ${
                     activity._type === 'emergency' ? 'bg-red-500 animate-pulse' :
                     activity.priority === 'urgent' ? 'bg-red-500 animate-pulse' :
