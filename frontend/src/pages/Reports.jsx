@@ -117,10 +117,7 @@ function ResponderStatusBadge({ status, reportStatus }) {
   );
 }
 
-
-
 // ─── Jurisdiction Banner + Share ─────────────────────────────────────────────
-// Receives pre-computed jurisdictionResult from the parent (set on view open).
 function JurisdictionBanner({ jurisdictionResult, scanning, incident, buildShareText }) {
   const [shareResult, setShareResult] = useState(null);
 
@@ -252,13 +249,22 @@ function AIAssessmentPanel({ aiData, onAccept, onDismiss, accepting, scanning, o
         <div className="flex items-center gap-2.5">
           <Bot className="w-4 h-4 text-slate-300" />
           <span className="text-xs font-bold text-slate-100 uppercase tracking-widest">AI-Assisted Assessment</span>
-          {hasData && <span className="text-xs bg-slate-500 text-slate-200 px-2 py-0.5 rounded font-medium">Results Available</span>}
+          {scanning && (
+            <span className="inline-flex items-center gap-1.5 text-xs bg-blue-600 text-white px-2 py-0.5 rounded font-semibold animate-pulse">
+              <Loader className="w-3 h-3 animate-spin" />Running...
+            </span>
+          )}
+          {hasData && !scanning && (
+            <span className="text-xs bg-green-600 text-white px-2 py-0.5 rounded font-medium">
+              ✓ Results Ready
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2">
-          {canRun && (
+          {canRun && !scanning && (
             <button onClick={onRunAssessment} disabled={scanning}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-600 hover:bg-slate-500 disabled:opacity-50 text-white text-xs font-semibold rounded transition-colors border border-slate-500">
-              {scanning ? <><Loader className="w-3.5 h-3.5 animate-spin" />Processing...</> : <><BarChart2 className="w-3.5 h-3.5" />Run Full Assessment</>}
+              <BarChart2 className="w-3.5 h-3.5" />Re-run Assessment
             </button>
           )}
           {hasData && (
@@ -269,25 +275,33 @@ function AIAssessmentPanel({ aiData, onAccept, onDismiss, accepting, scanning, o
         </div>
       </div>
 
-      {!hasData && !scanning && (
-        <div className="bg-slate-50 px-5 py-6 text-center border-t border-slate-200">
-          <Bot className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-          <p className="text-sm text-slate-500 font-medium">No assessment has been run for this report.</p>
-          <p className="text-xs text-slate-400 mt-1">Click "Run Full Assessment" to analyze priority and verify evidence integrity.</p>
-        </div>
-      )}
-
       {scanning && (
         <div className="bg-slate-50 px-5 py-8 flex flex-col items-center justify-center border-t border-slate-200 gap-3">
-          <Loader className="w-7 h-7 text-slate-500 animate-spin" />
+          <div className="relative">
+            <Loader className="w-8 h-8 text-slate-400 animate-spin" />
+            <Bot className="w-4 h-4 text-slate-500 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+          </div>
           <div className="text-center">
-            <p className="text-sm font-semibold text-slate-700">Assessment in Progress</p>
-            <p className="text-xs text-slate-500 mt-0.5">Running priority analysis and evidence verification simultaneously...</p>
+            <p className="text-sm font-semibold text-slate-700">Running Full AI Assessment</p>
+            <p className="text-xs text-slate-500 mt-0.5">Analyzing priority, fraud signals, and evidence integrity simultaneously...</p>
+          </div>
+          <div className="flex items-center gap-4 text-xs text-slate-400 mt-1">
+            <span className="flex items-center gap-1"><BarChart2 className="w-3 h-3" />Priority Analysis</span>
+            <span className="flex items-center gap-1"><Shield className="w-3 h-3" />Evidence Verification</span>
+            <span className="flex items-center gap-1"><Users className="w-3 h-3" />Team Recommendation</span>
           </div>
         </div>
       )}
 
-      {hasData && expanded && (
+      {!hasData && !scanning && (
+        <div className="bg-slate-50 px-5 py-6 text-center border-t border-slate-200">
+          <Bot className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+          <p className="text-sm text-slate-500 font-medium">Assessment could not be completed.</p>
+          <p className="text-xs text-slate-400 mt-1">Click "Re-run Assessment" to try again.</p>
+        </div>
+      )}
+
+      {hasData && !scanning && expanded && (
         <div className="bg-white border-t border-slate-200 divide-y divide-slate-100">
           {aiData.priority && (
             <div className="px-5 py-4">
@@ -373,7 +387,7 @@ function AIAssessmentPanel({ aiData, onAccept, onDismiss, accepting, scanning, o
   );
 }
 
-// ─── Track Responder Modal — Uber-style live tracking ────────────────────────
+// ─── Track Responder Modal ────────────────────────────────────────────────────
 function TrackResponderModal({ report, responder, onClose }) {
   const [responderLocation, setResponderLocation] = useState(null);
   const [responderStatus,   setResponderStatus]   = useState(null);
@@ -416,7 +430,6 @@ function TrackResponderModal({ report, responder, onClose }) {
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   };
 
-  // Fetch route from edge function
   const fetchRoute = useCallback(async (fromLat, fromLng) => {
     if (!fromLat || !fromLng || !reportLat || !reportLng) return;
     setFetchingRoute(true);
@@ -437,7 +450,6 @@ function TrackResponderModal({ report, responder, onClose }) {
     finally { setFetchingRoute(false); }
   }, [reportLat, reportLng]);
 
-  // Load leaflet
   useEffect(() => {
     Promise.all([
       import('leaflet'),
@@ -451,7 +463,6 @@ function TrackResponderModal({ report, responder, onClose }) {
         iconUrl:       'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
         shadowUrl:     'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
       });
-      // Pulsing responder icon
       const pulsingIcon = (color = '#0099FF') => new L.DivIcon({
         html: `
           <div style="position:relative;width:44px;height:44px;display:flex;align-items:center;justify-content:center;">
@@ -469,8 +480,8 @@ function TrackResponderModal({ report, responder, onClose }) {
         iconSize: [44, 44],
         iconAnchor: [22, 22],
       });
-      const enRoutePulse = pulsingIcon('#0099FF');
-      const onScenePulse = pulsingIcon('#00C48C');
+      const enRoutePulse  = pulsingIcon('#0099FF');
+      const onScenePulse  = pulsingIcon('#00C48C');
       const assignedPulse = pulsingIcon('#FF8C00');
 
       const destIcon = new L.DivIcon({
@@ -490,7 +501,6 @@ function TrackResponderModal({ report, responder, onClose }) {
     }).catch(console.error);
   }, []);
 
-  // Init data + subscriptions
   useEffect(() => {
     if (!responderId || !reportId) return;
 
@@ -510,7 +520,6 @@ function TrackResponderModal({ report, responder, onClose }) {
     };
     init();
 
-    // Realtime responder GPS
     const ch1 = supabase.channel(`rpt-track-resp-${responderId}-${Date.now()}`)
       .on('postgres_changes', { event:'UPDATE', schema:'public', table:'responders', filter:`id=eq.${responderId}` },
         async ({ new: n }) => {
@@ -519,7 +528,6 @@ function TrackResponderModal({ report, responder, onClose }) {
           setResponderLocation(newLoc);
           responderLocRef.current = newLoc;
           setDistance(calcDistance(n.current_lat, n.current_lng, reportLat, reportLng));
-          // Re-fetch route if moved >40m
           const last = lastFetchRef.current;
           if (!last || getDistanceMeters(last.lat, last.lng, n.current_lat, n.current_lng) > 40) {
             await fetchRoute(n.current_lat, n.current_lng);
@@ -527,13 +535,11 @@ function TrackResponderModal({ report, responder, onClose }) {
         }
       ).subscribe();
 
-    // Realtime report status
     const ch2 = supabase.channel(`rpt-track-status-${reportId}-${Date.now()}`)
       .on('postgres_changes', { event:'UPDATE', schema:'public', table:'reports', filter:`id=eq.${reportId}` },
         ({ new: n }) => setResponderStatus(n.responder_status)
       ).subscribe();
 
-    // Fallback polling every 10s
     const poll = setInterval(async () => {
       const { data } = await supabase.from('responders').select('current_lat,current_lng').eq('id', responderId).single();
       if (data?.current_lat && data?.current_lng) {
@@ -563,10 +569,10 @@ function TrackResponderModal({ report, responder, onClose }) {
   };
 
   const statusSteps = [
-    { key:'assigned',  label:'Assigned', icon:<Send className="w-3.5 h-3.5" /> },
-    { key:'en_route',  label:'En Route', icon:<Car className="w-3.5 h-3.5" /> },
-    { key:'on_scene',  label:'On Scene', icon:<MapPin className="w-3.5 h-3.5" /> },
-    { key:'completing',label:'Completing',icon:<CheckCircle className="w-3.5 h-3.5" /> },
+    { key:'assigned',   label:'Assigned',   icon:<Send className="w-3.5 h-3.5" />        },
+    { key:'en_route',   label:'En Route',   icon:<Car className="w-3.5 h-3.5" />         },
+    { key:'on_scene',   label:'On Scene',   icon:<MapPin className="w-3.5 h-3.5" />      },
+    { key:'completing', label:'Completing', icon:<CheckCircle className="w-3.5 h-3.5" /> },
   ];
   const stepOrder  = ['assigned','en_route','on_scene','completing'];
   const activeStep = stepOrder.indexOf(responderStatus);
@@ -610,22 +616,12 @@ function TrackResponderModal({ report, responder, onClose }) {
           url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
           attribution='&copy; <a href="https://carto.com/">CARTO</a>'
         />
-
-        {/* Route polyline — shadow + color */}
         {routeCoords.length > 1 && (
           <>
-            <Polyline
-              positions={routeCoords.map(c => [c.latitude, c.longitude])}
-              pathOptions={{ color:'#000000', weight:9, opacity:0.3, lineCap:'round', lineJoin:'round' }}
-            />
-            <Polyline
-              positions={routeCoords.map(c => [c.latitude, c.longitude])}
-              pathOptions={{ color: isArrived ? '#00C48C' : '#0099FF', weight:5, opacity:1, lineCap:'round', lineJoin:'round' }}
-            />
+            <Polyline positions={routeCoords.map(c => [c.latitude, c.longitude])} pathOptions={{ color:'#000000', weight:9, opacity:0.3, lineCap:'round', lineJoin:'round' }} />
+            <Polyline positions={routeCoords.map(c => [c.latitude, c.longitude])} pathOptions={{ color: isArrived ? '#00C48C' : '#0099FF', weight:5, opacity:1, lineCap:'round', lineJoin:'round' }} />
           </>
         )}
-
-        {/* Responder pulsing marker */}
         {responderLocation && (
           <Marker position={[responderLocation.lat, responderLocation.lng]} icon={responderIcon}>
             <Popup>
@@ -635,14 +631,11 @@ function TrackResponderModal({ report, responder, onClose }) {
             </Popup>
           </Marker>
         )}
-
-        {/* Destination pin */}
         {reportLat && reportLng && (
           <Marker position={[reportLat, reportLng]} icon={destIcon}>
             <Popup><div className="text-xs font-bold">{report.title}</div></Popup>
           </Marker>
         )}
-
         <MapFitter respLoc={responderLocation} destLat={reportLat} destLng={reportLng} route={routeCoords} />
       </MapContainer>
     );
@@ -653,8 +646,6 @@ function TrackResponderModal({ report, responder, onClose }) {
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-slate-900 rounded-2xl shadow-2xl max-w-4xl w-full max-h-[92vh] overflow-hidden border border-slate-700 flex flex-col">
-
-        {/* Header */}
         <div className="bg-slate-800 px-6 py-4 flex items-center justify-between border-b border-slate-700 shrink-0">
           <div className="flex items-center gap-3">
             <div className="relative">
@@ -674,9 +665,7 @@ function TrackResponderModal({ report, responder, onClose }) {
                 </span>
               </div>
               <div className="flex items-center gap-2 mt-0.5">
-                <div className={`flex items-center gap-1 text-xs font-semibold ${
-                  responderLocation ? 'text-green-400' : 'text-amber-400'
-                }`}>
+                <div className={`flex items-center gap-1 text-xs font-semibold ${responderLocation ? 'text-green-400' : 'text-amber-400'}`}>
                   <span className={`w-1.5 h-1.5 rounded-full ${responderLocation ? 'bg-green-400 animate-pulse' : 'bg-amber-400'}`} />
                   {responderLocation ? 'GPS LIVE' : 'LOCATING...'}
                 </div>
@@ -694,19 +683,14 @@ function TrackResponderModal({ report, responder, onClose }) {
         </div>
 
         <div className="flex flex-col md:flex-row flex-1 min-h-0 overflow-hidden">
-
-          {/* Map panel */}
           <div className="flex-1 min-h-64 md:min-h-0 relative">
             {loading ? (
               <div className="h-full flex flex-col items-center justify-center bg-slate-900 gap-3">
                 <Loader className="w-8 h-8 text-slate-400 animate-spin" />
                 <p className="text-sm text-slate-400">Connecting to GPS feed...</p>
               </div>
-            ) : (
-              renderMap()
-            )}
+            ) : renderMap()}
 
-            {/* ETA overlay on map */}
             {!loading && responderStatus === 'en_route' && routeInfo && (
               <div className="absolute top-3 left-3 bg-slate-900/90 rounded-xl px-4 py-3 border border-slate-700 backdrop-blur-sm">
                 <div className="text-2xl font-black text-blue-400 leading-none">{fmtETA(routeInfo.durationSec)}</div>
@@ -719,7 +703,6 @@ function TrackResponderModal({ report, responder, onClose }) {
               </div>
             )}
 
-            {/* On-scene badge */}
             {isArrived && (
               <div className="absolute top-3 left-3 bg-green-900/90 rounded-xl px-4 py-3 border border-green-700 backdrop-blur-sm">
                 <div className="text-sm font-black text-green-400 flex items-center gap-2">
@@ -728,29 +711,24 @@ function TrackResponderModal({ report, responder, onClose }) {
               </div>
             )}
 
-            {/* No GPS fallback */}
             {!loading && !responderLocation && (
               <div className="absolute inset-0 flex items-center justify-center bg-slate-900/80">
                 <div className="text-center px-8">
                   <Crosshair className="w-10 h-10 text-slate-500 mx-auto mb-3" />
                   <p className="text-sm font-semibold text-slate-300">Waiting for GPS signal</p>
-                  <p className="text-xs text-slate-500 mt-1">The responder's device must have location active. Updates every 10 seconds.</p>
+                  <p className="text-xs text-slate-500 mt-1">Updates every 10 seconds.</p>
                 </div>
               </div>
             )}
           </div>
 
-          {/* Side panel */}
           <div className="w-full md:w-72 bg-slate-900 border-t md:border-t-0 md:border-l border-slate-700 flex flex-col overflow-y-auto">
-
-            {/* Status pipeline */}
             <div className="px-5 pt-5 pb-4 border-b border-slate-800">
               <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Response Progress</p>
               <div className="space-y-1">
                 {statusSteps.map((step, i) => {
-                  const done    = i <  activeStep;
-                  const active  = i === activeStep;
-                  const pending = i >  activeStep;
+                  const done   = i <  activeStep;
+                  const active = i === activeStep;
                   return (
                     <div key={step.key} className="flex items-center gap-3">
                       <div className="flex flex-col items-center">
@@ -766,9 +744,7 @@ function TrackResponderModal({ report, responder, onClose }) {
                         )}
                       </div>
                       <div className="pb-5">
-                        <p className={`text-xs font-bold ${done ? 'text-green-400' : active ? 'text-white' : 'text-slate-600'}`}>
-                          {step.label}
-                        </p>
+                        <p className={`text-xs font-bold ${done ? 'text-green-400' : active ? 'text-white' : 'text-slate-600'}`}>{step.label}</p>
                         {active && (
                           <p className="text-xs text-slate-500 mt-0.5">
                             {step.key === 'en_route'  ? `${distance ? distance + ' km away' : 'In transit'}` :
@@ -783,35 +759,14 @@ function TrackResponderModal({ report, responder, onClose }) {
               </div>
             </div>
 
-            {/* Live stats */}
             <div className="px-5 py-4 border-b border-slate-800">
               <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Live Stats</p>
               <div className="grid grid-cols-2 gap-2">
                 {[
-                  {
-                    label: 'Distance',
-                    value: distance ? `${distance} km` : '—',
-                    icon: <Route className="w-3.5 h-3.5" />,
-                    color: 'text-blue-400',
-                  },
-                  {
-                    label: 'ETA',
-                    value: isArrived ? 'On Scene' : fmtETA(routeInfo?.durationSec),
-                    icon: <Clock className="w-3.5 h-3.5" />,
-                    color: isArrived ? 'text-green-400' : 'text-blue-400',
-                  },
-                  {
-                    label: 'Route',
-                    value: routeInfo?.distance || (routeCoords.length > 1 ? 'Loaded' : 'Pending'),
-                    icon: <Navigation className="w-3.5 h-3.5" />,
-                    color: routeCoords.length > 1 ? 'text-green-400' : 'text-slate-400',
-                  },
-                  {
-                    label: 'GPS Feed',
-                    value: responderLocation ? 'Live' : 'Searching',
-                    icon: <Crosshair className="w-3.5 h-3.5" />,
-                    color: responderLocation ? 'text-green-400' : 'text-amber-400',
-                  },
+                  { label: 'Distance', value: distance ? `${distance} km` : '—', icon: <Route className="w-3.5 h-3.5" />, color: 'text-blue-400' },
+                  { label: 'ETA', value: isArrived ? 'On Scene' : fmtETA(routeInfo?.durationSec), icon: <Clock className="w-3.5 h-3.5" />, color: isArrived ? 'text-green-400' : 'text-blue-400' },
+                  { label: 'Route', value: routeInfo?.distance || (routeCoords.length > 1 ? 'Loaded' : 'Pending'), icon: <Navigation className="w-3.5 h-3.5" />, color: routeCoords.length > 1 ? 'text-green-400' : 'text-slate-400' },
+                  { label: 'GPS Feed', value: responderLocation ? 'Live' : 'Searching', icon: <Crosshair className="w-3.5 h-3.5" />, color: responderLocation ? 'text-green-400' : 'text-amber-400' },
                 ].map(({ label, value, icon, color }) => (
                   <div key={label} className="bg-slate-800 rounded-lg p-3 border border-slate-700">
                     <div className={`flex items-center gap-1.5 mb-1 ${color}`}>{icon}<span className="text-xs font-bold uppercase tracking-wide">{label}</span></div>
@@ -821,7 +776,6 @@ function TrackResponderModal({ report, responder, onClose }) {
               </div>
             </div>
 
-            {/* Responder coords */}
             {responderLocation && (
               <div className="px-5 py-4 border-b border-slate-800">
                 <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Responder GPS</p>
@@ -832,14 +786,11 @@ function TrackResponderModal({ report, responder, onClose }) {
               </div>
             )}
 
-            {/* Directions button */}
             {responderLocation && reportLat && reportLng && (
               <div className="px-5 py-4">
-                <a
-                  href={`https://www.google.com/maps/dir/?api=1&origin=${responderLocation.lat},${responderLocation.lng}&destination=${reportLat},${reportLng}&travelmode=driving`}
+                <a href={`https://www.google.com/maps/dir/?api=1&origin=${responderLocation.lat},${responderLocation.lng}&destination=${reportLat},${reportLng}&travelmode=driving`}
                   target="_blank" rel="noreferrer"
-                  className="flex items-center justify-center gap-2 w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition-colors"
-                >
+                  className="flex items-center justify-center gap-2 w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition-colors">
                   <Navigation className="w-3.5 h-3.5" />Open in Google Maps
                 </a>
               </div>
@@ -847,7 +798,6 @@ function TrackResponderModal({ report, responder, onClose }) {
           </div>
         </div>
 
-        {/* Footer */}
         <div className="bg-slate-800 border-t border-slate-700 px-6 py-3 shrink-0">
           <button onClick={onClose} className="w-full py-2 text-sm font-semibold text-slate-400 hover:text-white transition-colors">
             Close Tracker
@@ -887,9 +837,7 @@ function DeployTeamModal({ report, responders, onClose, onDeploy, aiSuggestedTea
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-lg shadow-2xl max-w-lg w-full border border-slate-200 overflow-hidden">
         <div className="bg-slate-800 px-6 py-4">
-          <h2 className="text-sm font-bold text-white uppercase tracking-widest flex items-center gap-2">
-            <Send className="w-4 h-4" />Dispatch Response Team
-          </h2>
+          <h2 className="text-sm font-bold text-white uppercase tracking-widest flex items-center gap-2"><Send className="w-4 h-4" />Dispatch Response Team</h2>
           <p className="text-slate-400 text-xs mt-1">{report.report_number} — {report.title}</p>
           {aiSuggestedTeam && (
             <p className="text-xs text-slate-300 mt-1.5 flex items-center gap-1">
@@ -904,10 +852,8 @@ function DeployTeamModal({ report, responders, onClose, onDeploy, aiSuggestedTea
             const isAiPick     = aiSuggestedTeam === team.value;
             const hasAvailable = team.available.length > 0;
             return (
-              <button key={team.value} onClick={() => hasAvailable && setSelectedTeam(team.value)}
-                disabled={!hasAvailable}
-                className={`w-full flex items-center justify-between p-4 rounded border-2 transition-all text-left disabled:opacity-40 disabled:cursor-not-allowed ${
-                  isSelected ? 'border-slate-700 bg-slate-50' : 'border-slate-200 hover:border-slate-400 bg-white'}`}>
+              <button key={team.value} onClick={() => hasAvailable && setSelectedTeam(team.value)} disabled={!hasAvailable}
+                className={`w-full flex items-center justify-between p-4 rounded border-2 transition-all text-left disabled:opacity-40 disabled:cursor-not-allowed ${isSelected ? 'border-slate-700 bg-slate-50' : 'border-slate-200 hover:border-slate-400 bg-white'}`}>
                 <div className="flex items-center gap-3">
                   <div className={`w-10 h-10 ${team.header} rounded flex items-center justify-center shrink-0`}>
                     <Users className="w-5 h-5 text-white" />
@@ -945,9 +891,7 @@ function DeployTeamModal({ report, responders, onClose, onDeploy, aiSuggestedTea
       <div className="bg-white rounded-lg shadow-2xl max-w-lg w-full border border-slate-200 overflow-hidden">
         <div className="bg-slate-800 px-6 py-4 flex items-center justify-between">
           <div>
-            <h2 className="text-sm font-bold text-white uppercase tracking-widest flex items-center gap-2">
-              <Radio className="w-4 h-4 text-slate-300" />Pick Lead Responder
-            </h2>
+            <h2 className="text-sm font-bold text-white uppercase tracking-widest flex items-center gap-2"><Radio className="w-4 h-4 text-slate-300" />Pick Lead Responder</h2>
             <p className="text-slate-400 text-xs mt-1">{selectedTeamData?.label} — Step 2 of 3</p>
           </div>
           <button onClick={() => setStep(1)} className="text-slate-400 hover:text-white p-1.5 rounded"><X className="w-4 h-4" /></button>
@@ -955,9 +899,7 @@ function DeployTeamModal({ report, responders, onClose, onDeploy, aiSuggestedTea
         <div className="p-5">
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4 flex items-start gap-2">
             <Navigation className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
-            <p className="text-xs text-blue-800 font-medium">
-              Select <strong>one member</strong> whose GPS will be tracked on the map. All available members will be dispatched.
-            </p>
+            <p className="text-xs text-blue-800 font-medium">Select <strong>one member</strong> whose GPS will be tracked. All available members will be dispatched.</p>
           </div>
           <p className="text-xs text-slate-500 font-semibold uppercase tracking-widest mb-3">Available — {selectedTeamData?.available.length} members:</p>
           <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
@@ -966,8 +908,7 @@ function DeployTeamModal({ report, responders, onClose, onDeploy, aiSuggestedTea
               const hasGPS     = member.current_lat && member.current_lng;
               return (
                 <button key={member.id} onClick={() => setSelectedLeadId(member.id)}
-                  className={`w-full flex items-center justify-between p-3.5 rounded border-2 transition-all text-left ${
-                    isSelected ? 'border-slate-700 bg-slate-50' : 'border-slate-200 hover:border-slate-400 bg-white'}`}>
+                  className={`w-full flex items-center justify-between p-3.5 rounded border-2 transition-all text-left ${isSelected ? 'border-slate-700 bg-slate-50' : 'border-slate-200 hover:border-slate-400 bg-white'}`}>
                   <div className="flex items-center gap-3">
                     <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${isSelected ? 'bg-slate-700 text-white' : 'bg-slate-200 text-slate-700'}`}>
                       {member.name?.charAt(0)?.toUpperCase()}
@@ -1011,9 +952,7 @@ function DeployTeamModal({ report, responders, onClose, onDeploy, aiSuggestedTea
       <div className="bg-white rounded-lg shadow-2xl max-w-md w-full border border-slate-200 overflow-hidden">
         <div className="bg-slate-800 px-6 py-4 flex items-center justify-between">
           <div>
-            <h2 className="text-sm font-bold text-white uppercase tracking-widest flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-amber-400" />Confirm Dispatch
-            </h2>
+            <h2 className="text-sm font-bold text-white uppercase tracking-widest flex items-center gap-2"><AlertTriangle className="w-4 h-4 text-amber-400" />Confirm Dispatch</h2>
             <p className="text-slate-400 text-xs mt-1">Step 3 of 3 — Review before sending</p>
           </div>
           <button onClick={() => setStep(2)} className="text-slate-400 hover:text-white p-1.5 rounded"><X className="w-4 h-4" /></button>
@@ -1042,8 +981,7 @@ function DeployTeamModal({ report, responders, onClose, onDeploy, aiSuggestedTea
               <p className="text-xs text-slate-500 font-semibold uppercase tracking-wide mb-1.5">All dispatched members:</p>
               <div className="flex flex-wrap gap-1.5">
                 {selectedTeamData?.available.map(m => (
-                  <span key={m.id} className={`text-xs px-2 py-0.5 rounded font-medium border ${
-                    m.id === selectedLeadId ? 'bg-slate-700 text-white border-slate-700' : 'bg-white text-slate-700 border-slate-300'}`}>
+                  <span key={m.id} className={`text-xs px-2 py-0.5 rounded font-medium border ${m.id === selectedLeadId ? 'bg-slate-700 text-white border-slate-700' : 'bg-white text-slate-700 border-slate-300'}`}>
                     {m.id === selectedLeadId ? '📡 ' : ''}{m.name}{m.id === selectedLeadId ? ' (Lead)' : ''}
                   </span>
                 ))}
@@ -1061,9 +999,7 @@ function DeployTeamModal({ report, responders, onClose, onDeploy, aiSuggestedTea
           </div>
           <div className="bg-amber-50 border border-amber-300 rounded-lg p-3 flex items-start gap-2">
             <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-            <p className="text-xs text-amber-800 font-medium">
-              This marks the report as <strong>In Progress</strong> and sets all dispatched members to <strong>Busy</strong>.
-            </p>
+            <p className="text-xs text-amber-800 font-medium">This marks the report as <strong>In Progress</strong> and sets all dispatched members to <strong>Busy</strong>.</p>
           </div>
         </div>
         <div className="bg-slate-50 border-t border-slate-200 px-6 py-4 flex gap-2">
@@ -1113,9 +1049,7 @@ function ReportCard({ report, onView, onEdit, onDelete, canEdit, aiInsights, onT
       )}
       {isInProgress && (
         <div className="bg-slate-700 px-4 py-1.5 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-white text-xs font-bold uppercase tracking-wider">
-            <Radio className="w-3.5 h-3.5" />Responder Deployed
-          </div>
+          <div className="flex items-center gap-2 text-white text-xs font-bold uppercase tracking-wider"><Radio className="w-3.5 h-3.5" />Responder Deployed</div>
           <button onClick={e => { e.stopPropagation(); onTrackResponder(report); }}
             className="text-xs bg-white text-slate-700 px-2 py-0.5 rounded font-semibold hover:bg-slate-100 transition-colors flex items-center gap-1">
             <Navigation className="w-3 h-3" />Track
@@ -1230,8 +1164,15 @@ function ViewReportModal({ report, onClose, onEditStatus, canEdit, onDeployRespo
         </div>
 
         <div className="p-6 space-y-5">
-          <AIAssessmentPanel aiData={aiData} onAccept={() => onAcceptAI(report.id)} onDismiss={onDismissAI}
-            accepting={acceptingAI} scanning={scanning} onRunAssessment={() => onRunAssessment(report)} canRun={canEdit} />
+          <AIAssessmentPanel
+            aiData={aiData}
+            onAccept={() => onAcceptAI(report.id)}
+            onDismiss={onDismissAI}
+            accepting={acceptingAI}
+            scanning={scanning}
+            onRunAssessment={() => onRunAssessment(report)}
+            canRun={canEdit}
+          />
 
           <JurisdictionBanner jurisdictionResult={jurisdictionResult} scanning={scanningJurisdiction} incident={report} buildShareText={buildReportShareText} />
 
@@ -1446,7 +1387,7 @@ export default function Reports() {
   const [scanningId,        setScanningId]        = useState(null);
   const [acceptingAI,       setAcceptingAI]       = useState(false);
   const [userActionModal,   setUserActionModal]   = useState(null);
-  const [jurisdictionMap,   setJurisdictionMap]   = useState({}); // { [reportId]: result }
+  const [jurisdictionMap,   setJurisdictionMap]   = useState({});
   const [scanningJurisdictionId, setScanningJurisdictionId] = useState(null);
 
   useEffect(() => { fetchReports(); fetchResponders(); checkUserRole(); }, []);
@@ -1487,14 +1428,32 @@ export default function Reports() {
     setFilteredReports(f);
   };
 
+  // ── KEY CHANGE: Auto-run full AI assessment when operator opens a report ──
   const handleViewReport = (report) => {
     setSelectedReport(report);
+
+    // Restore any existing fraud data saved in DB from a previous session
     if (report.ai_verdict && !aiDataMap[report.id]) {
-      setAiDataMap(prev => ({ ...prev, [report.id]: { fraud: { verdict: report.ai_verdict, score: report.ai_score, explanation: report.ai_notes } } }));
+      setAiDataMap(prev => ({
+        ...prev,
+        [report.id]: {
+          fraud: {
+            verdict:     report.ai_verdict,
+            score:       report.ai_score,
+            explanation: report.ai_notes,
+          },
+        },
+      }));
     }
+
     // Auto-run jurisdiction check if we have coords and haven't checked yet
     if (report.latitude && report.longitude && !jurisdictionMap[report.id]) {
       handleJurisdictionCheck(report);
+    }
+
+    // Auto-run full AI assessment (priority + fraud) if not already done this session
+    if (!aiDataMap[report.id]) {
+      handleRunAssessment(report);
     }
   };
 
@@ -1509,7 +1468,6 @@ export default function Reports() {
       });
       if (result) {
         setJurisdictionMap(prev => ({ ...prev, [report.id]: result }));
-        // Mark card with outside flag for badge
         if (result.isOutside) {
           setReports(prev => prev.map(r => r.id === report.id ? { ...r, _outsideSalvacion: true } : r));
         }
@@ -1528,19 +1486,52 @@ export default function Reports() {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const [aiResult, fraudResult] = await Promise.all([
-        analyzeReportWithAI({ category: report.category, title: report.title, description: report.description, location: report.location }),
+        analyzeReportWithAI({
+          category:    report.category,
+          title:       report.title,
+          description: report.description,
+          location:    report.location,
+        }),
         fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/check-report-evidence`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY, 'Authorization': `Bearer ${session?.access_token ?? import.meta.env.VITE_SUPABASE_ANON_KEY}` },
+          headers: {
+            'Content-Type':  'application/json',
+            'apikey':        import.meta.env.VITE_SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${session?.access_token ?? import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
           body: JSON.stringify({ report }),
-        }).then(async res => { const text = await res.text(); try { return JSON.parse(text); } catch { return null; } }).catch(() => null),
+        })
+          .then(async res => { const text = await res.text(); try { return JSON.parse(text); } catch { return null; } })
+          .catch(() => null),
       ]);
+
       const merged = { ...aiResult, fraud: fraudResult || null };
       setAiDataMap(prev => ({ ...prev, [report.id]: merged }));
-      setReports(prev => prev.map(r => r.id === report.id ? { ...r, ai_verdict: fraudResult?.verdict ?? r.ai_verdict, ai_score: fraudResult?.score ?? r.ai_score, ai_notes: fraudResult?.explanation ?? r.ai_notes } : r));
-      if (selectedReport?.id === report.id) setSelectedReport(prev => ({ ...prev, ai_verdict: fraudResult?.verdict ?? prev.ai_verdict, ai_score: fraudResult?.score ?? prev.ai_score, ai_notes: fraudResult?.explanation ?? prev.ai_notes }));
-      await logAuditAction({ action: 'scan', actionType: 'report', description: `AI full assessment on ${report.report_number}`, severity: 'info', targetId: report.id });
-    } catch (err) { console.error('Assessment error:', err); } finally { setScanningId(null); }
+      setReports(prev => prev.map(r =>
+        r.id === report.id
+          ? { ...r, ai_verdict: fraudResult?.verdict ?? r.ai_verdict, ai_score: fraudResult?.score ?? r.ai_score, ai_notes: fraudResult?.explanation ?? r.ai_notes }
+          : r
+      ));
+      if (selectedReport?.id === report.id) {
+        setSelectedReport(prev => ({
+          ...prev,
+          ai_verdict: fraudResult?.verdict ?? prev.ai_verdict,
+          ai_score:   fraudResult?.score   ?? prev.ai_score,
+          ai_notes:   fraudResult?.explanation ?? prev.ai_notes,
+        }));
+      }
+      await logAuditAction({
+        action:      'scan',
+        actionType:  'report',
+        description: `AI full assessment on ${report.report_number}`,
+        severity:    'info',
+        targetId:    report.id,
+      });
+    } catch (err) {
+      console.error('Assessment error:', err);
+    } finally {
+      setScanningId(null);
+    }
   };
 
   const handleAcceptAI = async (reportId) => {
@@ -1551,18 +1542,25 @@ export default function Reports() {
       const report = reports.find(r => r.id === reportId);
       const notes = [
         `AI Assessment (${new Date().toLocaleDateString()})`,
-        `Priority: ${ai.priority?.toUpperCase()}`, `Severity: ${ai.severity}/10`, `Response: ${ai.responseTime}h`,
+        `Priority: ${ai.priority?.toUpperCase()}`,
+        `Severity: ${ai.severity}/10`,
+        `Response: ${ai.responseTime}h`,
         ai.suggestedTeam ? `Suggested Team: ${getTeamConfig(ai.suggestedTeam).label}` : null,
         `Reasoning: ${ai.reasoning}`,
         ai.suggestedActions?.length ? `Actions: ${ai.suggestedActions.join(', ')}` : null,
         ai.fraud ? `Evidence: ${ai.fraud.verdict} (${Math.round((ai.fraud.score || 0) * 100)}% confidence)` : null,
       ].filter(Boolean).join('\n');
+
       const { error } = await supabase.from('reports').update({ priority: ai.priority, admin_notes: notes }).eq('id', reportId);
       if (error) throw error;
       await logAuditAction({ action: 'update', actionType: 'report', description: `Accepted AI assessment for ${report?.report_number}`, severity: 'info', targetId: reportId });
       setAiDataMap(prev => { const n = { ...prev }; delete n[reportId]; return n; });
       fetchReports();
-    } catch (err) { console.error('Accept AI error:', err); } finally { setAcceptingAI(false); }
+    } catch (err) {
+      console.error('Accept AI error:', err);
+    } finally {
+      setAcceptingAI(false);
+    }
   };
 
   const handleDismissAI = (reportId) => {
@@ -1597,9 +1595,23 @@ export default function Reports() {
       const memberNames      = availableMembers.map(m => m.name).join(', ');
       const leadResponder    = availableMembers.find(m => m.id === leadResponderId);
       if (availableMembers.length > 0) await supabase.from('responders').update({ status: 'busy' }).in('id', availableMembers.map(m => m.id));
-      await supabase.from('reports').update({ status: 'in-progress', assigned_to: `${teamData.label}: ${memberNames}`, assigned_responder_id: leadResponderId, responder_status: 'assigned' }).eq('id', selectedReport.id);
+      await supabase.from('reports').update({
+        status:               'in-progress',
+        assigned_to:          `${teamData.label}: ${memberNames}`,
+        assigned_responder_id: leadResponderId,
+        responder_status:     'assigned',
+      }).eq('id', selectedReport.id);
       try {
-        await logAuditAction({ action: 'deploy', actionType: 'responder', description: `Dispatched ${teamData.label} to ${selectedReport.report_number}. Lead: ${leadResponder?.name ?? 'N/A'}. Members: ${memberNames}`, severity: 'warning', targetId: selectedReport.id, targetType: 'report', targetName: selectedReport.title, newValues: { assigned_to: teamData.label, team: teamValue, lead: leadResponder?.name, membersDeployed: availableMembers.length } });
+        await logAuditAction({
+          action:      'deploy',
+          actionType:  'responder',
+          description: `Dispatched ${teamData.label} to ${selectedReport.report_number}. Lead: ${leadResponder?.name ?? 'N/A'}. Members: ${memberNames}`,
+          severity:    'warning',
+          targetId:    selectedReport.id,
+          targetType:  'report',
+          targetName:  selectedReport.title,
+          newValues:   { assigned_to: teamData.label, team: teamValue, lead: leadResponder?.name, membersDeployed: availableMembers.length },
+        });
       } catch (auditErr) { console.error('Audit log failed for deploy:', auditErr); }
       setDeployModalOpen(false);
       setSelectedReport(null);
@@ -1621,7 +1633,7 @@ export default function Reports() {
       }
     }
     const fallback = responders.find(r => r.status === 'busy' && report.assigned_to?.includes(r.name)) || responders.find(r => r.status === 'busy');
-    if (!fallback) { alert('No active responder found for this report. The responder may not have GPS enabled yet.'); return; }
+    if (!fallback) { alert('No active responder found for this report.'); return; }
     setTrackingReport(report);
     setTrackingResponder(fallback);
     setTrackingModalOpen(true);
@@ -1731,15 +1743,22 @@ export default function Reports() {
       )}
 
       {selectedReport && (
-        <ViewReportModal report={selectedReport} onClose={() => setSelectedReport(null)}
-          onEditStatus={r => setEditingReport(r)} canEdit={canEdit}
+        <ViewReportModal
+          report={selectedReport}
+          onClose={() => setSelectedReport(null)}
+          onEditStatus={r => setEditingReport(r)}
+          canEdit={canEdit}
           onDeployResponder={r => { setSelectedReport(r); setDeployModalOpen(true); }}
-          onRunAssessment={handleRunAssessment} scanning={scanningId === selectedReport.id}
-          aiData={aiDataMap[selectedReport.id] || null} onAcceptAI={handleAcceptAI}
-          acceptingAI={acceptingAI} onDismissAI={() => handleDismissAI(selectedReport?.id)}
+          onRunAssessment={handleRunAssessment}
+          scanning={scanningId === selectedReport.id}
+          aiData={aiDataMap[selectedReport.id] || null}
+          onAcceptAI={handleAcceptAI}
+          acceptingAI={acceptingAI}
+          onDismissAI={() => handleDismissAI(selectedReport?.id)}
           onUserAction={handleOpenUserAction}
           jurisdictionResult={jurisdictionMap[selectedReport.id] || null}
-          scanningJurisdiction={scanningJurisdictionId === selectedReport.id} />
+          scanningJurisdiction={scanningJurisdictionId === selectedReport.id}
+        />
       )}
       {editingReport && (
         <EditReportModal report={editingReport} onClose={() => setEditingReport(null)} onSave={handleSaveEdit} />
