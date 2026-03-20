@@ -148,6 +148,24 @@ function ViewResidentModal({ resident, onClose, onDone, onOpenUserAction }) {
   const isPendingApproval  = resident.account_status === 'pending_approval';
   const needsAction        = isPendingApproval || hasPendingID;
 
+  // ── Email notification helper — uses the same Gmail SMTP as OTP ──────────
+  const sendResidentNotification = async (type, reason = null) => {
+    try {
+      const { error } = await supabase.functions.invoke('notify-resident', {
+        body: {
+          type,
+          residentName:    resident.full_name || `${resident.first_name || ''} ${resident.last_name || ''}`.trim() || resident.email,
+          residentEmail:   resident.email,
+          rejectionReason: reason,
+        },
+      });
+      if (error) console.error('Email notification error:', error);
+    } catch (err) {
+      // Non-fatal — log but don't block the approval/rejection flow
+      console.error('Email notification failed:', err);
+    }
+  };
+
   // ── Approve ID + activate account simultaneously ──────────────────────────
   const approveAndActivate = async () => {
     if (!confirm('Approve this registration? The resident\'s ID will be verified and their account activated.')) return;
@@ -165,6 +183,10 @@ function ViewResidentModal({ resident, onClose, onDone, onOpenUserAction }) {
         })
         .eq('id', resident.id);
       if (error) throw error;
+
+      // Send approval email (non-blocking — won't prevent success if email fails)
+      await sendResidentNotification('approved');
+
       onDone(true);
       onClose();
     } catch {
@@ -189,6 +211,10 @@ function ViewResidentModal({ resident, onClose, onDone, onOpenUserAction }) {
         })
         .eq('id', resident.id);
       if (error) throw error;
+
+      // Send rejection email with reason (non-blocking)
+      await sendResidentNotification('rejected', reason);
+
       setShowRejection(false);
       onDone(true);
       onClose();
@@ -271,7 +297,7 @@ function ViewResidentModal({ resident, onClose, onDone, onOpenUserAction }) {
                   </div>
                 )}
 
-                {/* Admin action notes banner — shown when a flag/suspend/ban has been applied */}
+                {/* Admin action notes banner */}
                 {resident.admin_action_notes && (
                   <div className="flex items-start gap-3 bg-slate-50 border border-slate-300 rounded-lg p-3.5">
                     <FileText className="w-4 h-4 text-slate-500 flex-shrink-0 mt-0.5" />
@@ -537,7 +563,6 @@ function ViewResidentModal({ resident, onClose, onDone, onOpenUserAction }) {
             {/* ── EXISTING ACTIVE RESIDENTS: use UserActionModal for flag/suspend/ban ── */}
             {activeTab === 'profile' && !needsAction && (
               <>
-                {/* Restore — simple direct update, no modal needed */}
                 {(resident.account_status === 'suspended' || resident.account_status === 'flagged') && !resident.is_banned && (
                   <button
                     onClick={async () => {
@@ -569,7 +594,6 @@ function ViewResidentModal({ resident, onClose, onDone, onOpenUserAction }) {
                   </button>
                 )}
 
-                {/* Flag / Suspend / Ban — opens UserActionModal */}
                 {!resident.is_banned && resident.account_status !== 'suspended' && (
                   <button
                     onClick={() => onOpenUserAction(resident)}
@@ -580,7 +604,6 @@ function ViewResidentModal({ resident, onClose, onDone, onOpenUserAction }) {
                   </button>
                 )}
 
-                {/* Direct suspend option when already flagged */}
                 {resident.account_status === 'flagged' && (
                   <button
                     onClick={() => onOpenUserAction(resident)}
@@ -613,7 +636,7 @@ export default function Residents() {
   const [loading,          setLoading]          = useState(true);
   const [selectedResident, setSelectedResident] = useState(null);
   const [viewModalOpen,    setViewModalOpen]    = useState(false);
-  const [userActionTarget, setUserActionTarget] = useState(null); // ← NEW
+  const [userActionTarget, setUserActionTarget] = useState(null);
   const [searchTerm,       setSearchTerm]       = useState('');
   const [purokFilter,      setPurokFilter]      = useState('All');
   const [statusFilter,     setStatusFilter]     = useState('All');
@@ -691,10 +714,8 @@ export default function Residents() {
     fetchStats();
   };
 
-  // Opens UserActionModal from ViewResidentModal or from the table directly
   const handleOpenUserAction = (resident) => {
     setUserActionTarget(resident);
-    // If called from inside ViewResidentModal, close that first
     setViewModalOpen(false);
     setSelectedResident(null);
   };
@@ -941,7 +962,6 @@ export default function Residents() {
                               <Eye className="w-3.5 h-3.5" />
                               {needsAction ? 'Review' : 'View'}
                             </button>
-                            {/* Quick flag button directly in table — only for active/flagged residents */}
                             {!needsAction && resident.account_status !== 'suspended' && (
                               <button
                                 onClick={() => handleOpenUserAction(resident)}
@@ -996,7 +1016,6 @@ export default function Residents() {
         />
       )}
 
-      {/* UserActionModal — shown when opened from table OR from ViewResidentModal */}
       {userActionTarget && (
         <UserActionModal
           user={userActionTarget}
