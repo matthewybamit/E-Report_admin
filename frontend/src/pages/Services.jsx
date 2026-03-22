@@ -14,7 +14,7 @@ import {
   Filter,
   Loader,
   RefreshCw,
-  ScrollText,   // replaces Flame — used for Barangay Permit Clearance
+  ScrollText,
   Search,
   ShieldCheck,
   Users,
@@ -24,10 +24,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "../config/supabase";
 import { logAuditAction } from "../utils/auditLogger";
-import {
-  generateCertificate,
-  hasDocxTemplate,
-} from "../utils/generateCertificate";
+import { generateCertificate, hasDocxTemplate } from "../utils/generateCertificate";
 import leftHeaderImg  from "../assets/QuezonCityLeftSideHeader_Image.png";
 import rightHeaderImg from "../assets/SalvacionRightHeader_Image.png";
 import { getBase64FromUrl } from "../utils/imageHelpers";
@@ -43,21 +40,20 @@ const loadHeaderImages = async () => {
 };
 
 // ─── Constants ────────────────────────────────────────────────────────────────
+// DB key "permit_to_roast" kept for constraint compatibility; label = "Business Permit"
 const SERVICE_TYPES = [
-  { id: "barangay_id",           label: "Barangay ID",                icon: CreditCard,  color: "bg-blue-50 text-blue-700 border-blue-300"      },
-  { id: "barangay_clearance",    label: "Barangay Clearance",         icon: ShieldCheck, color: "bg-green-50 text-green-700 border-green-300"    },
-  { id: "certificate_indigency", label: "Certificate of Indigency",   icon: Banknote,    color: "bg-pink-50 text-pink-700 border-pink-300"       },
-  { id: "business_clearance",    label: "Business Clearance",         icon: Building2,   color: "bg-teal-50 text-teal-700 border-teal-300"       },
-  // DB key stays "permit_to_roast" for constraint compatibility
-  { id: "permit_to_roast",       label: "Barangay Permit Clearance",  icon: ScrollText,  color: "bg-violet-50 text-violet-700 border-violet-300" },
+  { id: "barangay_id",           label: "Barangay ID",       icon: CreditCard,  color: "bg-blue-50 text-blue-700 border-blue-300"      },
+  { id: "barangay_clearance",    label: "Barangay Clearance", icon: ShieldCheck, color: "bg-green-50 text-green-700 border-green-300"    },
+  { id: "certificate_indigency", label: "Cert. of Indigency", icon: Banknote,    color: "bg-pink-50 text-pink-700 border-pink-300"       },
+  { id: "business_clearance",    label: "Business Clearance", icon: Building2,   color: "bg-teal-50 text-teal-700 border-teal-300"       },
+  { id: "permit_to_roast",       label: "Business Permit",    icon: ScrollText,  color: "bg-violet-50 text-violet-700 border-violet-300" },
 ];
 
 const STATUS_CONFIG = {
-  pending:    { label: "Pending",    color: "bg-slate-50 text-slate-600 border-slate-300",  dot: "bg-slate-400",  icon: Clock        },
-  // processing kept for compatibility with existing records, but removed from UI selectors
-  processing: { label: "Processing", color: "bg-amber-50 text-amber-700 border-amber-300",  dot: "bg-amber-500",  icon: Loader       },
-  approved:   { label: "Approved",   color: "bg-green-50 text-green-700 border-green-300",  dot: "bg-green-500",  icon: CheckCircle  },
-  rejected:   { label: "Rejected",   color: "bg-red-50 text-red-700 border-red-300",        dot: "bg-red-500",    icon: XCircle      },
+  pending:    { label: "Pending",    color: "bg-slate-50 text-slate-600 border-slate-300", dot: "bg-slate-400",  icon: Clock       },
+  processing: { label: "Processing", color: "bg-amber-50 text-amber-700 border-amber-300", dot: "bg-amber-500",  icon: Loader      },
+  approved:   { label: "Approved",   color: "bg-green-50 text-green-700 border-green-300", dot: "bg-green-500",  icon: CheckCircle },
+  rejected:   { label: "Rejected",   color: "bg-red-50 text-red-700 border-red-300",       dot: "bg-red-500",    icon: XCircle     },
 };
 
 const FIELD_LABELS = {
@@ -76,7 +72,6 @@ const FIELD_LABELS = {
   business_name:     "Business Name",
   business_address:  "Business Address",
   business_type:     "Nature of Business / Activity",
-  items_to_roast:    "Items to Roast",       // kept for legacy records
   ctc_no:            "CTC No.",
 };
 
@@ -85,6 +80,7 @@ const SERVICE_FIELDS = {
   barangay_clearance:    ["full_name","address","date_of_birth","place_of_birth","gender","civil_status","contact_number","date_of_residency","residency_status","ctc_no","purpose"],
   certificate_indigency: ["full_name","address","age","gender","contact_number","purpose","assistance_type"],
   business_clearance:    ["full_name","contact_number","business_name","business_address","business_type","purpose"],
+  // Business Permit — no items_to_roast; uses business_type for nature of activity
   permit_to_roast:       ["full_name","address","contact_number","business_name","business_address","business_type","purpose"],
 };
 
@@ -95,7 +91,7 @@ function generateControlNumber(serviceType) {
     barangay_clearance:    "BCL",
     certificate_indigency: "COI",
     business_clearance:    "BCB",
-    permit_to_roast:       "BPC",  // Barangay Permit Clearance
+    permit_to_roast:       "BPC",
   }[serviceType] || "SRV";
   const now  = new Date();
   const yyyy = now.getFullYear();
@@ -129,7 +125,7 @@ function ServiceTypeBadge({ serviceType }) {
   );
 }
 
-// ─── Quick Download Button (table row) ───────────────────────────────────────
+// ─── Quick Download Button ────────────────────────────────────────────────────
 function QuickDownloadButton({ request }) {
   const [generating, setGenerating] = useState(false);
   const handleClick = async (e) => {
@@ -159,18 +155,16 @@ function QuickDownloadButton({ request }) {
 // ─── Status Timeline ──────────────────────────────────────────────────────────
 function StatusTimeline({ currentStatus }) {
   const isRejected = currentStatus === "rejected";
-
   const stages = isRejected
     ? ["pending", "processing", "rejected"]
     : ["pending", "processing", "approved"];
 
   const stageConfig = {
-    pending:    { label: "Received",   icon: Clock,        color: "bg-slate-400",  ring: "ring-slate-300" },
-    processing: { label: "Processing", icon: Loader,       color: "bg-amber-500",  ring: "ring-amber-200" },
-    approved:   { label: "Approved",   icon: CheckCircle,  color: "bg-green-500",  ring: "ring-green-200" },
-    rejected:   { label: "Rejected",   icon: XCircle,      color: "bg-red-500",    ring: "ring-red-200"   },
+    pending:    { label: "Received",   icon: Clock,       color: "bg-slate-400",  ring: "ring-slate-300" },
+    processing: { label: "Processing", icon: Loader,      color: "bg-amber-500",  ring: "ring-amber-200" },
+    approved:   { label: "Approved",   icon: CheckCircle, color: "bg-green-500",  ring: "ring-green-200" },
+    rejected:   { label: "Rejected",   icon: XCircle,     color: "bg-red-500",    ring: "ring-red-200"   },
   };
-
   const currentIdx = stages.indexOf(currentStatus);
 
   return (
@@ -181,16 +175,12 @@ function StatusTimeline({ currentStatus }) {
           const Icon  = cfg.icon;
           const done  = i < currentIdx;
           const active = i === currentIdx;
-
           return (
             <div key={stage} className="flex items-center flex-1">
               <div className="flex flex-col items-center gap-1 flex-1">
-                <div className={`
-                  w-8 h-8 rounded-full flex items-center justify-center transition-all
-                  ${active  ? `${cfg.color} ring-4 ${cfg.ring} text-white` : ""}
-                  ${done    ? "bg-green-500 text-white" : ""}
-                  ${!active && !done ? "bg-white border-2 border-slate-300 text-slate-400" : ""}
-                `}>
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
+                  active ? `${cfg.color} ring-4 ${cfg.ring} text-white` : ""
+                } ${done ? "bg-green-500 text-white" : ""} ${!active && !done ? "bg-white border-2 border-slate-300 text-slate-400" : ""}`}>
                   {done ? <CheckCircle className="w-4 h-4" /> : <Icon className={`w-4 h-4 ${active ? "" : "text-slate-400"}`} />}
                 </div>
                 <span className={`text-xs font-semibold whitespace-nowrap ${active ? "text-slate-800" : done ? "text-green-700" : "text-slate-400"}`}>
@@ -211,41 +201,16 @@ function StatusTimeline({ currentStatus }) {
 // ─── Verification Panel ───────────────────────────────────────────────────────
 function VerificationPanel({ request }) {
   const checks = [
-    {
-      label:   "Applicant Photo",
-      hint:    "2×2 ID photo submitted",
-      passed:  !!request.photo_2x2_url,
-      link:    request.photo_2x2_url,
-      linkLabel: "View Photo",
-    },
-    {
-      label:   "Digital Signature",
-      hint:    "Applicant signature on file",
-      passed:  !!request.signature_url,
-      link:    request.signature_url,
-      linkLabel: "View Signature",
-    },
-    {
-      label:   "Purpose Stated",
-      hint:    "Applicant provided a purpose",
-      passed:  !!(request.purpose?.trim()),
-    },
-    {
-      label:   "Contact Number",
-      hint:    "Valid contact number on record",
-      passed:  !!(request.contact_number?.trim()),
-    },
+    { label: "Applicant Photo",    hint: "2×2 ID photo submitted",      passed: !!request.photo_2x2_url,          link: request.photo_2x2_url,    linkLabel: "View Photo"      },
+    { label: "Digital Signature",  hint: "Applicant signature on file",  passed: !!request.signature_url,          link: request.signature_url,    linkLabel: "View Signature"  },
+    { label: "Purpose Stated",     hint: "Applicant provided a purpose", passed: !!(request.purpose?.trim())                                                                     },
+    { label: "Contact Number",     hint: "Valid contact number on record",passed: !!(request.contact_number?.trim())                                                              },
     ...(request.business_name != null
-      ? [{
-          label:  "Business Name",
-          hint:   "Business/establishment name provided",
-          passed: !!(request.business_name?.trim()),
-        }]
+      ? [{ label: "Business Name", hint: "Business name provided",       passed: !!(request.business_name?.trim()) }]
       : []),
   ];
-
-  const allPassed  = checks.every((c) => c.passed);
-  const passCount  = checks.filter((c) => c.passed).length;
+  const passCount = checks.filter((c) => c.passed).length;
+  const allPassed = passCount === checks.length;
 
   return (
     <div className="border border-slate-200 rounded-lg overflow-hidden">
@@ -261,21 +226,14 @@ function VerificationPanel({ request }) {
         {checks.map((c) => (
           <div key={c.label} className={`flex items-center gap-3 p-2.5 rounded-lg border ${c.passed ? "bg-green-50 border-green-100" : "bg-slate-50 border-slate-200"}`}>
             <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${c.passed ? "bg-green-500" : "bg-slate-300"}`}>
-              {c.passed
-                ? <CheckCircle className="w-3 h-3 text-white" />
-                : <X className="w-3 h-3 text-white" />}
+              {c.passed ? <CheckCircle className="w-3 h-3 text-white" /> : <X className="w-3 h-3 text-white" />}
             </div>
             <div className="flex-1 min-w-0">
               <p className={`text-xs font-semibold ${c.passed ? "text-green-800" : "text-slate-600"}`}>{c.label}</p>
               <p className="text-xs text-slate-400">{c.hint}</p>
             </div>
             {c.link && c.passed && (
-              <a
-                href={c.link}
-                target="_blank"
-                rel="noreferrer"
-                className="text-xs font-semibold text-blue-600 hover:underline shrink-0"
-              >
+              <a href={c.link} target="_blank" rel="noreferrer" className="text-xs font-semibold text-blue-600 hover:underline shrink-0">
                 {c.linkLabel}
               </a>
             )}
@@ -288,17 +246,17 @@ function VerificationPanel({ request }) {
 
 // ─── View / Process Modal ─────────────────────────────────────────────────────
 function RequestModal({ request, onClose, onSave, saving }) {
-  const [status,           setStatus]           = useState(request.status);
-  const [adminNotes,       setAdminNotes]       = useState(request.admin_notes  || "");
-  const [processedBy,      setProcessedBy]      = useState(request.processed_by || "");
-  const [rejectionReason,  setRejectionReason]  = useState("");
-  const [generating,       setGenerating]       = useState(false);
+  const [status,          setStatus]          = useState(request.status);
+  const [adminNotes,      setAdminNotes]      = useState(request.admin_notes  || "");
+  const [processedBy,     setProcessedBy]     = useState(request.processed_by || "");
+  const [rejectionReason, setRejectionReason] = useState("");
+  const [generating,      setGenerating]      = useState(false);
 
   if (!request) return null;
 
-  const fields       = SERVICE_FIELDS[request.service_type] || [];
-  const isApproving  = status === "approved";
-  const isRejecting  = status === "rejected";
+  const fields        = SERVICE_FIELDS[request.service_type] || [];
+  const isApproving   = status === "approved";
+  const isRejecting   = status === "rejected";
   const statusChanged = status !== request.status;
 
   const handleGenerateDocx = async () => {
@@ -334,29 +292,28 @@ function RequestModal({ request, onClose, onSave, saving }) {
     });
   };
 
-  // Button appearance varies by selected status
   const saveBtn = isApproving
     ? { label: "Approve & Save", bg: "bg-green-600 hover:bg-green-700" }
     : isRejecting
     ? { label: "Reject Request",  bg: "bg-red-600 hover:bg-red-700"   }
     : { label: "Save Changes",    bg: "bg-slate-700 hover:bg-slate-800" };
 
-  // Only allow statuses that are user-selectable (Pending, Approved, Rejected)
   const selectableStatuses = ["pending", "approved", "rejected"];
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-2xl max-w-3xl w-full max-h-[92vh] overflow-hidden border border-slate-200 flex flex-col">
 
-        {/* ── Header ── */}
+        {/* Header */}
         <div className="bg-slate-800 px-6 py-4 flex items-start justify-between shrink-0">
           <div>
             <span className="text-xs text-slate-400 font-mono mb-1 block tracking-widest">
-              {request.control_number
-                ? `CTRL · ${request.control_number}`
-                : "Control No. Pending Assignment"}
+              {request.control_number ? `CTRL · ${request.control_number}` : "Control No. Pending Assignment"}
             </span>
-            <h2 className="text-base font-bold text-white">{request.service_title}</h2>
+            {/* Always show the human-readable label from SERVICE_TYPES */}
+            <h2 className="text-base font-bold text-white">
+              {SERVICE_TYPES.find((s) => s.id === request.service_type)?.label || request.service_title}
+            </h2>
             <div className="flex items-center gap-2 mt-1.5 flex-wrap">
               <StatusBadge status={request.status} />
               <ServiceTypeBadge serviceType={request.service_type} />
@@ -370,10 +327,10 @@ function RequestModal({ request, onClose, onSave, saving }) {
           </button>
         </div>
 
-        {/* ── Status Timeline ── */}
+        {/* Status Timeline */}
         <StatusTimeline currentStatus={request.status} />
 
-        {/* ── Scrollable Body ── */}
+        {/* Scrollable Body */}
         <div className="overflow-y-auto flex-1 p-6 space-y-5">
 
           {/* Applicant Details */}
@@ -414,7 +371,7 @@ function RequestModal({ request, onClose, onSave, saving }) {
             </div>
           </div>
 
-          {/* Document Verification Panel */}
+          {/* Verification Panel */}
           <VerificationPanel request={request} />
 
           {/* Processing Panel */}
@@ -426,11 +383,9 @@ function RequestModal({ request, onClose, onSave, saving }) {
             </div>
             <div className="p-4 space-y-4">
 
-              {/* Status Selector — only Pending, Approved, Rejected */}
+              {/* Status Selector */}
               <div>
-                <label className="block text-xs font-bold text-slate-600 uppercase tracking-widest mb-2">
-                  Update Status
-                </label>
+                <label className="block text-xs font-bold text-slate-600 uppercase tracking-widest mb-2">Update Status</label>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                   {selectableStatuses.map((val) => {
                     const cfg = STATUS_CONFIG[val];
@@ -455,7 +410,7 @@ function RequestModal({ request, onClose, onSave, saving }) {
                 </div>
               </div>
 
-              {/* Approval confirmation notice */}
+              {/* Approval notice */}
               {isApproving && statusChanged && (
                 <div className="bg-green-50 border border-green-200 rounded-lg p-3.5">
                   <div className="flex items-start gap-2.5">
@@ -472,7 +427,7 @@ function RequestModal({ request, onClose, onSave, saving }) {
                 </div>
               )}
 
-              {/* Rejection warning + reason */}
+              {/* Rejection warning */}
               {isRejecting && (
                 <div className="bg-red-50 border border-red-200 rounded-lg p-3.5 space-y-3">
                   <div className="flex items-start gap-2.5">
@@ -498,9 +453,7 @@ function RequestModal({ request, onClose, onSave, saving }) {
 
               {/* Processed By */}
               <div>
-                <label className="block text-xs font-bold text-slate-600 uppercase tracking-widest mb-1.5">
-                  Processed By
-                </label>
+                <label className="block text-xs font-bold text-slate-600 uppercase tracking-widest mb-1.5">Processed By</label>
                 <input
                   type="text"
                   value={processedBy}
@@ -524,19 +477,15 @@ function RequestModal({ request, onClose, onSave, saving }) {
                 />
               </div>
 
-              {/* Control Number Display */}
+              {/* Control Number */}
               {request.control_number && (
                 <div className="bg-slate-50 border border-slate-200 rounded-lg p-3.5">
-                  <p className="text-xs text-slate-500 font-bold uppercase tracking-widest mb-1">
-                    Assigned Control Number
-                  </p>
-                  <p className="text-base font-bold text-green-700 font-mono tracking-widest">
-                    {request.control_number}
-                  </p>
+                  <p className="text-xs text-slate-500 font-bold uppercase tracking-widest mb-1">Assigned Control Number</p>
+                  <p className="text-base font-bold text-green-700 font-mono tracking-widest">{request.control_number}</p>
                 </div>
               )}
 
-              {/* Previous admin notes (if already processed) */}
+              {/* Previous note */}
               {request.admin_notes && request.admin_notes !== adminNotes && (
                 <div className="bg-blue-50 border border-blue-100 rounded-lg p-3.5">
                   <p className="text-xs text-blue-700 font-bold uppercase tracking-widest mb-1">Previous Note</p>
@@ -547,36 +496,26 @@ function RequestModal({ request, onClose, onSave, saving }) {
           </div>
         </div>
 
-        {/* ── Footer ── */}
+        {/* Footer */}
         <div className="bg-slate-50 border-t border-slate-200 px-6 py-4 flex gap-3 shrink-0 flex-wrap">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-sm font-semibold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
-          >
+          <button onClick={onClose} className="px-4 py-2 text-sm font-semibold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">
             Cancel
           </button>
-
-          {/* Re-download button — only for already-approved requests */}
           {request.status === "approved" && hasDocxTemplate(request.service_type) && (
             <button
               onClick={handleGenerateDocx}
               disabled={generating}
               className="flex items-center justify-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-50"
             >
-              {generating
-                ? <><Loader className="w-4 h-4 animate-spin" />Generating...</>
-                : <><Download className="w-4 h-4" />Download DOCX</>}
+              {generating ? <><Loader className="w-4 h-4 animate-spin" />Generating...</> : <><Download className="w-4 h-4" />Download DOCX</>}
             </button>
           )}
-
           <button
             onClick={handleSave}
             disabled={saving}
             className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-50 ${saveBtn.bg}`}
           >
-            {saving
-              ? <><Loader className="w-4 h-4 animate-spin" />Saving...</>
-              : <><CheckCircle className="w-4 h-4" />{saveBtn.label}</>}
+            {saving ? <><Loader className="w-4 h-4 animate-spin" />Saving...</> : <><CheckCircle className="w-4 h-4" />{saveBtn.label}</>}
           </button>
         </div>
       </div>
@@ -616,7 +555,6 @@ export default function Services() {
 
   useEffect(() => { fetchRequests(); }, [fetchRequests]);
 
-  // Realtime subscription
   useEffect(() => {
     const channel = supabase
       .channel("admin-service-requests")
@@ -657,13 +595,13 @@ export default function Services() {
         console.error("Audit log failed:", auditErr);
       }
 
-      // Auto-generate DOCX when approving
- if (
-  updates.status === "approved" &&
-  original?.status !== "approved" &&
-  hasDocxTemplate(original?.service_type) &&
-  original?.service_type !== "barangay_id"
-) {
+      // Auto-generate DOCX when approving (skip barangay_id — uses ID card template)
+      if (
+        updates.status === "approved" &&
+        original?.status !== "approved" &&
+        hasDocxTemplate(original?.service_type) &&
+        original?.service_type !== "barangay_id"
+      ) {
         try {
           const images = await loadHeaderImages();
           await generateCertificate({ ...original, ...updates }, images);
@@ -682,7 +620,7 @@ export default function Services() {
     }
   };
 
-  // ── Filtered list ──
+  // Filtered list
   const filtered = requests.filter((r) => {
     const q = searchQuery.toLowerCase();
     const matchSearch =
@@ -690,23 +628,23 @@ export default function Services() {
       r.full_name?.toLowerCase().includes(q) ||
       r.service_title?.toLowerCase().includes(q) ||
       r.control_number?.toLowerCase().includes(q) ||
-      r.contact_number?.includes(q);
+      r.contact_number?.includes(q) ||
+      r.business_name?.toLowerCase().includes(q);
     const matchStatus = statusFilter === "all" || r.status === statusFilter;
     const matchType   = typeFilter   === "all" || r.service_type === typeFilter;
     return matchSearch && matchStatus && matchType;
   });
 
   const stats = {
-    total:      requests.length,
-    pending:    requests.filter((r) => r.status === "pending").length,
-    approved:   requests.filter((r) => r.status === "approved").length,
-    rejected:   requests.filter((r) => r.status === "rejected").length,
+    total:    requests.length,
+    pending:  requests.filter((r) => r.status === "pending").length,
+    approved: requests.filter((r) => r.status === "approved").length,
+    rejected: requests.filter((r) => r.status === "rejected").length,
   };
 
-  // For the status tabs, we only show Pending, Approved, Rejected, and All.
   const statusTabs = [
-    { key: "all",      label: "All",      count: stats.total },
-    { key: "pending",  label: "Pending",  count: stats.pending },
+    { key: "all",      label: "All",      count: stats.total    },
+    { key: "pending",  label: "Pending",  count: stats.pending  },
     { key: "approved", label: "Approved", count: stats.approved },
     { key: "rejected", label: "Rejected", count: stats.rejected },
   ];
@@ -714,7 +652,7 @@ export default function Services() {
   return (
     <div className="p-6 space-y-6 min-h-screen bg-slate-50">
 
-      {/* ── Header ── */}
+      {/* Header */}
       <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
           <div className="flex items-center gap-2 text-xs text-slate-500 mb-1 uppercase tracking-widest font-semibold">
@@ -728,12 +666,11 @@ export default function Services() {
           disabled={loading}
           className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-50 shadow-sm"
         >
-          <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-          Refresh
+          <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />Refresh
         </button>
       </div>
 
-      {/* ── Fetch error banner ── */}
+      {/* Error banner */}
       {fetchError && (
         <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 flex items-center gap-3">
           <XCircle className="w-4 h-4 text-red-500 shrink-0" />
@@ -742,13 +679,13 @@ export default function Services() {
         </div>
       )}
 
-      {/* ── Stats ── */}
+      {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
-          { label: "Total",      value: stats.total,      color: "text-slate-700", border: "border-l-slate-400" },
-          { label: "Pending",    value: stats.pending,    color: "text-slate-600", border: "border-l-slate-400" },
-          { label: "Approved",   value: stats.approved,   color: "text-green-600", border: "border-l-green-500" },
-          { label: "Rejected",   value: stats.rejected,   color: "text-red-600",   border: "border-l-red-500"   },
+          { label: "Total",    value: stats.total,    color: "text-slate-700", border: "border-l-slate-400" },
+          { label: "Pending",  value: stats.pending,  color: "text-slate-600", border: "border-l-slate-400" },
+          { label: "Approved", value: stats.approved, color: "text-green-600", border: "border-l-green-500" },
+          { label: "Rejected", value: stats.rejected, color: "text-red-600",   border: "border-l-red-500"   },
         ].map(({ label, value, color, border }) => (
           <div key={label} className={`bg-white border border-slate-200 border-l-4 ${border} rounded-lg p-4 shadow-sm`}>
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest">{label}</p>
@@ -757,14 +694,14 @@ export default function Services() {
         ))}
       </div>
 
-      {/* ── Filters ── */}
+      {/* Filters */}
       <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm space-y-3">
         <div className="flex flex-col md:flex-row gap-3">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <input
               type="text"
-              placeholder="Search by name, control number, or contact..."
+              placeholder="Search by name, business, control number, or contact..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-9 pr-4 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white text-slate-800"
@@ -778,7 +715,7 @@ export default function Services() {
           >
             <option value="all">All Statuses</option>
             {Object.entries(STATUS_CONFIG)
-              .filter(([key]) => key !== "processing") // exclude processing from dropdown
+              .filter(([key]) => key !== "processing")
               .map(([val, cfg]) => (
                 <option key={val} value={val}>{cfg.label}</option>
               ))}
@@ -834,7 +771,7 @@ export default function Services() {
         </p>
       </div>
 
-      {/* ── Status Tab Pills ── */}
+      {/* Status Tab Pills */}
       <div className="flex items-center gap-2 flex-wrap">
         {statusTabs.map(({ key, label, count }) => (
           <button
@@ -851,7 +788,7 @@ export default function Services() {
         ))}
       </div>
 
-      {/* ── Table ── */}
+      {/* Table */}
       {loading ? (
         <div className="flex items-center justify-center py-20">
           <Loader className="w-7 h-7 animate-spin text-slate-400" />
@@ -870,9 +807,7 @@ export default function Services() {
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200">
                   {["Date Filed","Applicant","Service Type","Details","Status","Control No.","Actions"].map((h) => (
-                    <th key={h} className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap">
-                      {h}
-                    </th>
+                    <th key={h} className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -896,7 +831,7 @@ export default function Services() {
                       <p className="text-xs text-slate-400">{req.contact_number}</p>
                     </td>
 
-                    {/* Service Type */}
+                    {/* Service Type — uses badge which maps to correct label */}
                     <td className="px-4 py-3">
                       <ServiceTypeBadge serviceType={req.service_type} />
                     </td>
@@ -914,16 +849,14 @@ export default function Services() {
                       )}
                       {/* Legacy records may still have items_to_roast */}
                       {req.items_to_roast && (
-                        <p className="text-xs text-slate-600 truncate">📋 {req.items_to_roast}</p>
+                        <p className="text-xs text-slate-500 truncate italic">📋 {req.items_to_roast}</p>
                       )}
                     </td>
 
                     {/* Status */}
                     <td className="px-4 py-3">
                       <StatusBadge status={req.status} />
-                      {req.processed_by && (
-                        <p className="text-xs text-slate-400 mt-1">by {req.processed_by}</p>
-                      )}
+                      {req.processed_by && <p className="text-xs text-slate-400 mt-1">by {req.processed_by}</p>}
                     </td>
 
                     {/* Control Number */}

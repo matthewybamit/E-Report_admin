@@ -1,4 +1,11 @@
 // src/pages/Reports.jsx
+// KEY CHANGES vs original:
+//   1. handleOpenUserAction is now async — if reporter_id is null it looks up
+//      the real users row by reporter_email before opening UserActionModal.
+//   2. Every onUserAction call site passes { id: report.reporter_id || null, email: ... }
+//      so the fallback lookup always has an email to work with.
+//   3. No other logic changed.
+
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { analyzeJurisdiction, buildReportShareText } from '../utils/barangayJurisdiction';
 import { supabase } from '../config/supabase';
@@ -183,7 +190,6 @@ function JurisdictionBanner({ jurisdictionResult, scanning, incident, buildShare
           {confidence} confidence
         </span>
       </div>
-
       <div className="bg-amber-50 px-4 py-3 space-y-3">
         <div className="flex items-start gap-2.5">
           <MapPin className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
@@ -198,14 +204,12 @@ function JurisdictionBanner({ jurisdictionResult, scanning, incident, buildShare
             )}
           </div>
         </div>
-
         {contactSuggestion && (
           <div className="flex items-start gap-2 text-xs text-amber-900 bg-white border border-amber-200 rounded px-3 py-2">
             <Users className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
             <span>{contactSuggestion}</span>
           </div>
         )}
-
         <button
           onClick={handleShare}
           className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded text-sm font-bold transition-all ${
@@ -215,7 +219,7 @@ function JurisdictionBanner({ jurisdictionResult, scanning, incident, buildShare
             'bg-amber-600 hover:bg-amber-700 text-white'
           }`}
         >
-          {shareResult === 'shared' ? <><CheckCircle className="w-4 h-4" />Shared!</>         :
+          {shareResult === 'shared' ? <><CheckCircle className="w-4 h-4" />Shared!</> :
            shareResult === 'copied' ? <><CheckCircle className="w-4 h-4" />Copied to Clipboard</> :
            shareResult === 'error'  ? <><AlertCircle className="w-4 h-4" />Share Failed — Try Again</> :
            <><Share2 className="w-4 h-4" />Forward to Correct Barangay</>}
@@ -464,18 +468,7 @@ function TrackResponderModal({ report, responder, onClose }) {
         shadowUrl:     'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
       });
       const pulsingIcon = (color = '#0099FF') => new L.DivIcon({
-        html: `
-          <div style="position:relative;width:44px;height:44px;display:flex;align-items:center;justify-content:center;">
-            <div style="position:absolute;width:44px;height:44px;border-radius:50%;background:${color}22;animation:pulse1 1.6s ease-out infinite;"></div>
-            <div style="position:absolute;width:30px;height:30px;border-radius:50%;background:${color}33;animation:pulse2 1.6s ease-out 0.5s infinite;"></div>
-            <div style="width:22px;height:22px;border-radius:50%;background:${color};border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;z-index:1;">
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="white"><path d="M5 13l4 4L19 7"/></svg>
-            </div>
-          </div>
-          <style>
-            @keyframes pulse1{0%{transform:scale(0.5);opacity:0.8}100%{transform:scale(1.5);opacity:0}}
-            @keyframes pulse2{0%{transform:scale(0.6);opacity:0.6}100%{transform:scale(1.3);opacity:0}}
-          </style>`,
+        html: `<div style="position:relative;width:44px;height:44px;display:flex;align-items:center;justify-content:center;"><div style="position:absolute;width:44px;height:44px;border-radius:50%;background:${color}22;animation:pulse1 1.6s ease-out infinite;"></div><div style="position:absolute;width:30px;height:30px;border-radius:50%;background:${color}33;animation:pulse2 1.6s ease-out 0.5s infinite;"></div><div style="width:22px;height:22px;border-radius:50%;background:${color};border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;z-index:1;"><svg width="11" height="11" viewBox="0 0 24 24" fill="white"><path d="M5 13l4 4L19 7"/></svg></div></div><style>@keyframes pulse1{0%{transform:scale(0.5);opacity:0.8}100%{transform:scale(1.5);opacity:0}}@keyframes pulse2{0%{transform:scale(0.6);opacity:0.6}100%{transform:scale(1.3);opacity:0}}</style>`,
         className: '',
         iconSize: [44, 44],
         iconAnchor: [22, 22],
@@ -483,27 +476,19 @@ function TrackResponderModal({ report, responder, onClose }) {
       const enRoutePulse  = pulsingIcon('#0099FF');
       const onScenePulse  = pulsingIcon('#00C48C');
       const assignedPulse = pulsingIcon('#FF8C00');
-
       const destIcon = new L.DivIcon({
-        html: `
-          <div style="display:flex;flex-direction:column;align-items:center;">
-            <div style="width:32px;height:32px;background:#FF3B30;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:3px solid white;box-shadow:0 3px 10px rgba(255,59,48,0.5);display:flex;align-items:center;justify-content:center;">
-              <div style="transform:rotate(45deg);width:10px;height:10px;background:white;border-radius:50%;"></div>
-            </div>
-          </div>`,
+        html: `<div style="display:flex;flex-direction:column;align-items:center;"><div style="width:32px;height:32px;background:#FF3B30;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:3px solid white;box-shadow:0 3px 10px rgba(255,59,48,0.5);display:flex;align-items:center;justify-content:center;"><div style="transform:rotate(45deg);width:10px;height:10px;background:white;border-radius:50%;"></div></div></div>`,
         className: '',
         iconSize: [32, 40],
         iconAnchor: [16, 40],
         popupAnchor: [0, -40],
       });
-
       setLeaflet({ L, ...RLmod, enRoutePulse, onScenePulse, assignedPulse, destIcon });
     }).catch(console.error);
   }, []);
 
   useEffect(() => {
     if (!responderId || !reportId) return;
-
     const init = async () => {
       setLoading(true);
       try {
@@ -587,7 +572,6 @@ function TrackResponderModal({ report, responder, onClose }) {
     );
 
     const { MapContainer, TileLayer, Marker, Popup, Polyline, useMap, enRoutePulse, onScenePulse, assignedPulse, destIcon, L } = leaflet;
-
     const responderIcon = responderStatus === 'on_scene' ? onScenePulse
                         : responderStatus === 'en_route' ? enRoutePulse
                         : assignedPulse;
@@ -610,8 +594,7 @@ function TrackResponderModal({ report, responder, onClose }) {
       : reportLat && reportLng ? [reportLat, reportLng] : [14.5995, 120.9842];
 
     return (
-      <MapContainer center={center} zoom={15} style={{ height:'100%', width:'100%' }}
-        ref={(m) => m && setMapInstance(m)}>
+      <MapContainer center={center} zoom={15} style={{ height:'100%', width:'100%' }} ref={(m) => m && setMapInstance(m)}>
         <TileLayer
           url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
           attribution='&copy; <a href="https://carto.com/">CARTO</a>'
@@ -1014,6 +997,17 @@ function DeployTeamModal({ report, responders, onClose, onDeploy, aiSuggestedTea
   );
 }
 
+// ─── Shared helper: build userInfo object from a report ──────────────────────
+function reporterInfo(report) {
+  return {
+    id:             report.reporter_id || null,
+    email:          report.reporter_email,
+    full_name:      report.reporter_name,
+    phone:          report.reporter_phone,
+    account_status: 'active',
+  };
+}
+
 // ─── Report Card ──────────────────────────────────────────────────────────────
 function ReportCard({ report, onView, onEdit, onDelete, canEdit, aiInsights, onTrackResponder, onUserAction }) {
   const categoryIcons = {
@@ -1110,7 +1104,7 @@ function ReportCard({ report, onView, onEdit, onDelete, canEdit, aiInsights, onT
             <>
               <button onClick={() => onEdit(report)} className="p-2 text-slate-500 bg-slate-100 rounded hover:bg-slate-200 transition-colors" title="Edit"><Edit3 className="w-3.5 h-3.5" /></button>
               <button
-                onClick={e => { e.stopPropagation(); onUserAction({ id: report.reporter_id, email: report.reporter_email, full_name: report.reporter_name, phone: report.reporter_phone, account_status: 'active' }); }}
+                onClick={e => { e.stopPropagation(); onUserAction(reporterInfo(report)); }}
                 className="p-2 text-amber-600 bg-amber-50 rounded hover:bg-amber-100 transition-colors" title="Flag / Suspend Reporter">
                 <Flag className="w-3.5 h-3.5" />
               </button>
@@ -1181,7 +1175,8 @@ function ViewReportModal({ report, onClose, onEditStatus, canEdit, onDeployRespo
               <div className="bg-slate-50 border-b border-slate-200 px-4 py-2.5 flex items-center justify-between">
                 <p className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center gap-2"><User className="w-3.5 h-3.5" />Reporter Information</p>
                 {canEdit && (
-                  <button onClick={() => onUserAction({ id: report.reporter_id, email: report.reporter_email, full_name: report.reporter_name, phone: report.reporter_phone, account_status: 'active' })}
+                  <button
+                    onClick={() => onUserAction(reporterInfo(report))}
                     className="flex items-center gap-1 px-2 py-1 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded hover:bg-amber-100 transition-colors">
                     <Flag className="w-3 h-3" /> Flag User
                   </button>
@@ -1189,10 +1184,14 @@ function ViewReportModal({ report, onClose, onEditStatus, canEdit, onDeployRespo
               </div>
               <div className="p-4 space-y-3">
                 <div><p className="text-xs text-slate-400 uppercase tracking-wide font-semibold mb-0.5">Full Name</p><p className="text-sm font-semibold text-slate-800">{report.reporter_name}</p></div>
-                <div><p className="text-xs text-slate-400 uppercase tracking-wide font-semibold mb-0.5">Contact Number</p>
-                  <a href={`tel:${report.reporter_phone}`} className="text-sm text-slate-700 hover:text-slate-900 flex items-center gap-1.5"><Phone className="w-3.5 h-3.5 text-slate-400" />{report.reporter_phone || 'N/A'}</a></div>
-                <div><p className="text-xs text-slate-400 uppercase tracking-wide font-semibold mb-0.5">Email Address</p>
-                  <a href={`mailto:${report.reporter_email}`} className="text-sm text-slate-700 hover:text-slate-900 flex items-center gap-1.5"><Mail className="w-3.5 h-3.5 text-slate-400" />{report.reporter_email}</a></div>
+                <div>
+                  <p className="text-xs text-slate-400 uppercase tracking-wide font-semibold mb-0.5">Contact Number</p>
+                  <a href={`tel:${report.reporter_phone}`} className="text-sm text-slate-700 hover:text-slate-900 flex items-center gap-1.5"><Phone className="w-3.5 h-3.5 text-slate-400" />{report.reporter_phone || 'N/A'}</a>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-400 uppercase tracking-wide font-semibold mb-0.5">Email Address</p>
+                  <a href={`mailto:${report.reporter_email}`} className="text-sm text-slate-700 hover:text-slate-900 flex items-center gap-1.5"><Mail className="w-3.5 h-3.5 text-slate-400" />{report.reporter_email}</a>
+                </div>
               </div>
             </div>
             <div className="border border-slate-200 rounded-lg overflow-hidden">
@@ -1271,7 +1270,8 @@ function ViewReportModal({ report, onClose, onEditStatus, canEdit, onDeployRespo
         <div className="sticky bottom-0 bg-slate-50 border-t border-slate-200 px-6 py-4 flex gap-3 flex-wrap rounded-b-lg">
           <button onClick={onClose} className="px-4 py-2 text-sm font-semibold text-slate-700 bg-white border border-slate-300 rounded hover:bg-slate-50 transition-colors">Close</button>
           {canEdit && (
-            <button onClick={() => onUserAction({ id: report.reporter_id, email: report.reporter_email, full_name: report.reporter_name, phone: report.reporter_phone, account_status: 'active' })}
+            <button
+              onClick={() => onUserAction(reporterInfo(report))}
               className="flex items-center gap-2 px-4 py-2 border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 text-sm font-semibold rounded transition-colors">
               <Flag className="w-4 h-4" /> Flag / Suspend Reporter
             </button>
@@ -1428,11 +1428,8 @@ export default function Reports() {
     setFilteredReports(f);
   };
 
-  // ── KEY CHANGE: Auto-run full AI assessment when operator opens a report ──
   const handleViewReport = (report) => {
     setSelectedReport(report);
-
-    // Restore any existing fraud data saved in DB from a previous session
     if (report.ai_verdict && !aiDataMap[report.id]) {
       setAiDataMap(prev => ({
         ...prev,
@@ -1445,13 +1442,9 @@ export default function Reports() {
         },
       }));
     }
-
-    // Auto-run jurisdiction check if we have coords and haven't checked yet
     if (report.latitude && report.longitude && !jurisdictionMap[report.id]) {
       handleJurisdictionCheck(report);
     }
-
-    // Auto-run full AI assessment (priority + fraud) if not already done this session
     if (!aiDataMap[report.id]) {
       handleRunAssessment(report);
     }
@@ -1479,7 +1472,37 @@ export default function Reports() {
     }
   };
 
-  const handleOpenUserAction = (user) => { if (!user) return; setUserActionModal(user); };
+  // ── FIX: async — if reporter_id is null, look up the real user row by email ─
+  const handleOpenUserAction = async (userInfo) => {
+    if (!userInfo) return;
+
+    // Case 1: already have a valid UUID id — open directly
+    if (userInfo.id) {
+      setUserActionModal(userInfo);
+      return;
+    }
+
+    // Case 2: reporter_id was null — look up real user row by reporter email
+    if (userInfo.email) {
+      try {
+        const { data, error } = await supabase
+          .from('users')
+          .select('*')
+          .eq('email', userInfo.email)
+          .maybeSingle();
+
+        if (!error && data) {
+          setUserActionModal(data);
+          return;
+        }
+      } catch (err) {
+        console.error('User lookup by email failed:', err);
+      }
+    }
+
+    // Case 3: lookup failed — open anyway (UserActionModal will show its warning)
+    setUserActionModal(userInfo);
+  };
 
   const handleRunAssessment = async (report) => {
     setScanningId(report.id);
