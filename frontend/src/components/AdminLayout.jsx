@@ -7,7 +7,7 @@ import {
   ChevronRight, ChevronDown, Camera, AlertCircle, CheckCircle,
   Clock, Trash2, Shield, UserCog, Ambulance, Flame, AlertTriangle,
   MapPin, ExternalLink, ClipboardList, Send, Loader2, Radio, Minimize2,
-  Star,   // ← Feedback page icon
+  Star,
 } from 'lucide-react';
 import { supabase } from '../config/supabase';
 import { logAuditAction } from '../utils/auditLogger';
@@ -251,7 +251,10 @@ const fmtDateGroup = (iso) => {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 };
 
-function ConversationPane({ thread, adminUser, adminRole, onBack }) {
+// ── ConversationPane ──────────────────────────────────────────────────────────
+// FIX: accepts onMarkedRead callback; marks thread messages as read on open
+// and auto-marks new incoming messages as read while pane is open.
+function ConversationPane({ thread, adminUser, adminRole, onBack, onMarkedRead }) {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading]   = useState(true);
   const [input, setInput]       = useState('');
@@ -263,6 +266,19 @@ function ConversationPane({ thread, adminUser, adminRole, onBack }) {
   const incidentCol = thread.type === 'emergency' ? 'emergency_id' : 'report_id';
   const myId        = adminUser?.auth_user_id ?? adminUser?.id;
 
+  // Mark every unread message in this thread (not sent by me) as read in DB
+  const markThreadRead = useCallback(async () => {
+    if (!myId) return;
+    await supabase
+      .from('chat_messages')
+      .update({ is_read: true })
+      .eq(incidentCol, thread.id)
+      .eq('is_read', false)
+      .neq('sender_id', myId);
+    // Notify parent so it can refresh unread counts
+    onMarkedRead?.(thread);
+  }, [thread.id, thread.type, myId, incidentCol, onMarkedRead]);
+
   useEffect(() => {
     const fetchMessages = async () => {
       setLoading(true);
@@ -271,19 +287,32 @@ function ConversationPane({ thread, adminUser, adminRole, onBack }) {
         .eq(incidentCol, thread.id).order('created_at', { ascending: true });
       setMessages(data ?? []);
       setLoading(false);
+      // Mark all existing unread as read now that the pane is open
+      markThreadRead();
     };
     fetchMessages();
 
     if (channelRef.current) supabase.removeChannel(channelRef.current);
+
     const channel = supabase
       .channel(`admin-chat-${thread.type}-${thread.id}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages', filter: `${incidentCol}=eq.${thread.id}` }, (payload) => {
-        setMessages(prev => prev.find(m => m.id === payload.new.id) ? prev : [...prev, payload.new]);
+      .on('postgres_changes', {
+        event: 'INSERT', schema: 'public', table: 'chat_messages',
+        filter: `${incidentCol}=eq.${thread.id}`,
+      }, (payload) => {
+        const msg = payload.new;
+        setMessages(prev => prev.find(m => m.id === msg.id) ? prev : [...prev, msg]);
+        // Auto-mark as read immediately — the pane is open so we're "watching"
+        if (msg.sender_id !== myId) {
+          supabase.from('chat_messages').update({ is_read: true }).eq('id', msg.id);
+          onMarkedRead?.(thread);
+        }
       })
       .subscribe();
+
     channelRef.current = channel;
     return () => { if (channelRef.current) supabase.removeChannel(channelRef.current); };
-  }, [thread.id]);
+  }, [thread.id, thread.type]);
 
   useEffect(() => {
     setTimeout(() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' }), 60);
@@ -297,7 +326,11 @@ function ConversationPane({ thread, adminUser, adminRole, onBack }) {
     setInput('');
     setSending(true);
     const senderName = adminUser?.full_name ?? adminUser?.email?.split('@')[0] ?? 'Operator';
-    const optimistic = { id: `opt-${Date.now()}`, [incidentCol]: thread.id, sender_id: myId, sender_role: adminRole, sender_name: senderName, message: text, is_read: false, created_at: new Date().toISOString(), _optimistic: true };
+    const optimistic = {
+      id: `opt-${Date.now()}`, [incidentCol]: thread.id,
+      sender_id: myId, sender_role: adminRole, sender_name: senderName,
+      message: text, is_read: false, created_at: new Date().toISOString(), _optimistic: true,
+    };
     setMessages(prev => [...prev, optimistic]);
     const { data, error } = await supabase.from('chat_messages')
       .insert({ [incidentCol]: thread.id, sender_id: myId, sender_role: adminRole, sender_name: senderName, message: text })
@@ -359,7 +392,17 @@ function ConversationPane({ thread, adminUser, adminRole, onBack }) {
                         ${msg._optimistic ? 'opacity-60' : ''}`}>
                         {msg.message}
                       </div>
-                      <span className="text-[10px] text-slate-600 px-1">{fmtTime(msg.created_at)}</span>
+                      <div className="flex items-center gap-1 px-1">
+                        <span className="text-[10px] text-slate-600">{fmtTime(msg.created_at)}</span>
+                        {/* Read receipt tick for my own messages */}
+                        {isMine && (
+                          <span title={msg.is_read ? 'Read' : 'Delivered'}>
+                            {msg.is_read
+                              ? <CheckCircle className="w-2.5 h-2.5 text-blue-400" />
+                              : <CheckCircle className="w-2.5 h-2.5 text-slate-600" />}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );
@@ -386,6 +429,7 @@ function ConversationPane({ thread, adminUser, adminRole, onBack }) {
   );
 }
 
+// ── ThreadItem ────────────────────────────────────────────────────────────────
 function ThreadItem({ thread, onClick }) {
   const accentColor = thread.type === 'emergency' ? 'text-red-400'  : 'text-amber-400';
   const dotColor    = thread.type === 'emergency' ? 'bg-red-500'    : 'bg-amber-500';
@@ -409,6 +453,9 @@ function ThreadItem({ thread, onClick }) {
   );
 }
 
+// ── GlobalChatWidget ──────────────────────────────────────────────────────────
+// FIX: properly clears unread when a thread is opened; re-fetches counts after
+// DB mark-as-read; handles real-time UPDATE events (read receipts).
 function GlobalChatWidget({ adminUser, adminRole }) {
   const [open, setOpen]                     = useState(false);
   const [threads, setThreads]               = useState([]);
@@ -418,43 +465,125 @@ function GlobalChatWidget({ adminUser, adminRole }) {
 
   const myId = adminUser?.auth_user_id ?? adminUser?.id;
 
+  // ── Load threads + their unread counts from DB ──────────────────────────
   const loadThreads = useCallback(async () => {
     if (!myId) return;
     setLoadingThreads(true);
-    const [{ data: emergencies }, { data: reports }] = await Promise.all([
-      supabase.from('emergencies').select('id, type, severity, location_text, status, created_at').in('status', ['dispatched', 'pending']).order('created_at', { ascending: false }).limit(20),
-      supabase.from('reports').select('id, title, category, status, created_at').in('status', ['in-progress', 'pending']).order('created_at', { ascending: false }).limit(20),
-    ]);
-    const { data: unreadData } = await supabase.from('chat_messages').select('emergency_id, report_id').eq('is_read', false).neq('sender_id', myId);
-    const emUnread = {}, rpUnread = {};
-    (unreadData ?? []).forEach(m => {
-      if (m.emergency_id) emUnread[m.emergency_id] = (emUnread[m.emergency_id] || 0) + 1;
-      if (m.report_id)    rpUnread[m.report_id]    = (rpUnread[m.report_id]    || 0) + 1;
-    });
-    const emThreads = (emergencies ?? []).map(e => ({ id: e.id, type: 'emergency', label: `🚨 ${e.type ?? 'Emergency'}`, subtitle: e.location_text ?? `Severity: ${e.severity ?? 'high'}`, unread: emUnread[e.id] || 0, lastMessage: null, created_at: e.created_at }));
-    const rpThreads = (reports ?? []).map(r => ({ id: r.id, type: 'report', label: `📋 ${r.title ?? 'Report'}`, subtitle: r.category ?? 'General', unread: rpUnread[r.id] || 0, lastMessage: null, created_at: r.created_at }));
-    const all = [...emThreads, ...rpThreads].sort((a, b) => (b.unread - a.unread) || (new Date(b.created_at) - new Date(a.created_at)));
-    setThreads(all);
-    setTotalUnread(all.reduce((s, t) => s + t.unread, 0));
-    setLoadingThreads(false);
+    try {
+      const [{ data: emergencies }, { data: reports }] = await Promise.all([
+        supabase.from('emergencies').select('id, type, severity, location_text, status, created_at')
+          .in('status', ['dispatched', 'pending']).order('created_at', { ascending: false }).limit(20),
+        supabase.from('reports').select('id, title, category, status, created_at')
+          .in('status', ['in-progress', 'pending']).order('created_at', { ascending: false }).limit(20),
+      ]);
+
+      // Fetch all unread messages not sent by me across all active threads
+      const { data: unreadData } = await supabase
+        .from('chat_messages')
+        .select('emergency_id, report_id, message')
+        .eq('is_read', false)
+        .neq('sender_id', myId);
+
+      const emUnread = {}, rpUnread = {}, emLast = {}, rpLast = {};
+      (unreadData ?? []).forEach(m => {
+        if (m.emergency_id) {
+          emUnread[m.emergency_id] = (emUnread[m.emergency_id] || 0) + 1;
+          emLast[m.emergency_id]   = m.message;
+        }
+        if (m.report_id) {
+          rpUnread[m.report_id] = (rpUnread[m.report_id] || 0) + 1;
+          rpLast[m.report_id]   = m.message;
+        }
+      });
+
+      const emThreads = (emergencies ?? []).map(e => ({
+        id: e.id, type: 'emergency',
+        label: `🚨 ${e.type ?? 'Emergency'}`,
+        subtitle: e.location_text ?? `Severity: ${e.severity ?? 'high'}`,
+        unread: emUnread[e.id] || 0,
+        lastMessage: emLast[e.id] || null,
+        created_at: e.created_at,
+      }));
+      const rpThreads = (reports ?? []).map(r => ({
+        id: r.id, type: 'report',
+        label: `📋 ${r.title ?? 'Report'}`,
+        subtitle: r.category ?? 'General',
+        unread: rpUnread[r.id] || 0,
+        lastMessage: rpLast[r.id] || null,
+        created_at: r.created_at,
+      }));
+
+      const all = [...emThreads, ...rpThreads].sort(
+        (a, b) => (b.unread - a.unread) || (new Date(b.created_at) - new Date(a.created_at))
+      );
+      setThreads(all);
+      setTotalUnread(all.reduce((s, t) => s + t.unread, 0));
+    } finally {
+      setLoadingThreads(false);
+    }
   }, [myId]);
 
-  useEffect(() => { if (adminUser) loadThreads(); }, [adminUser]);
-  useEffect(() => { const t = setInterval(() => { if (adminUser) loadThreads(); }, 30000); return () => clearInterval(t); }, [adminUser]);
+  // ── Open a thread — optimistically clear its unread then confirm via DB ──
+  const handleOpenThread = useCallback((thread) => {
+    // Optimistic: immediately zero this thread's badge + subtract from total
+    setThreads(prev => prev.map(t =>
+      (t.id === thread.id && t.type === thread.type) ? { ...t, unread: 0 } : t
+    ));
+    setTotalUnread(prev => Math.max(0, prev - (thread.unread || 0)));
+    setActiveThread(thread);
+  }, []);
 
+  // ── Called by ConversationPane after it marks messages as read in DB ──────
+  const handleMarkedRead = useCallback((thread) => {
+    // Refresh from DB so counts are ground-truth
+    loadThreads();
+  }, [loadThreads]);
+
+  // ── Initial load ──────────────────────────────────────────────────────────
+  useEffect(() => { if (adminUser) loadThreads(); }, [adminUser]);
+
+  // ── Poll every 30s as fallback ────────────────────────────────────────────
+  useEffect(() => {
+    const t = setInterval(() => { if (adminUser) loadThreads(); }, 30000);
+    return () => clearInterval(t);
+  }, [adminUser, loadThreads]);
+
+  // ── Real-time: new messages increment unread; read updates decrement ──────
   useEffect(() => {
     if (!myId) return;
+
     const channel = supabase.channel('global-chat-unread-watch')
+      // New message from someone else → increment
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages' }, (payload) => {
-        if (payload.new.sender_id === myId) return;
+        const msg = payload.new;
+        if (msg.sender_id === myId) return; // my own message, ignore
+
+        const isActiveThread =
+          activeThread &&
+          ((activeThread.type === 'emergency' && activeThread.id === msg.emergency_id) ||
+           (activeThread.type === 'report'    && activeThread.id === msg.report_id));
+
+        // If this thread is currently open, don't increment (ConversationPane auto-reads it)
+        if (isActiveThread) return;
+
         setTotalUnread(prev => prev + 1);
         setThreads(prev => prev.map(t => {
-          const match = (t.type === 'emergency' && t.id === payload.new.emergency_id) || (t.type === 'report' && t.id === payload.new.report_id);
-          return match ? { ...t, unread: t.unread + 1, lastMessage: payload.new.message } : t;
+          const match =
+            (t.type === 'emergency' && t.id === msg.emergency_id) ||
+            (t.type === 'report'    && t.id === msg.report_id);
+          return match ? { ...t, unread: t.unread + 1, lastMessage: msg.message } : t;
         }));
-      }).subscribe();
+      })
+      // Message marked as read → refresh counts (handles read receipts from other admins)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'chat_messages' }, (payload) => {
+        if (payload.new.is_read && !payload.old.is_read && payload.new.sender_id !== myId) {
+          loadThreads();
+        }
+      })
+      .subscribe();
+
     return () => supabase.removeChannel(channel);
-  }, [myId]);
+  }, [myId, activeThread, loadThreads]);
 
   if (!adminUser) return null;
 
@@ -500,7 +629,13 @@ function GlobalChatWidget({ adminUser, adminRole }) {
 
           <div className="flex-1 min-h-0">
             {activeThread ? (
-              <ConversationPane thread={activeThread} adminUser={adminUser} adminRole={adminRole} onBack={() => setActiveThread(null)} />
+              <ConversationPane
+                thread={activeThread}
+                adminUser={adminUser}
+                adminRole={adminRole}
+                onBack={() => setActiveThread(null)}
+                onMarkedRead={handleMarkedRead}
+              />
             ) : (
               <div className="h-full flex flex-col">
                 <div className="flex-1 overflow-y-auto chat-scroll px-2 py-2">
@@ -521,12 +656,16 @@ function GlobalChatWidget({ adminUser, adminRole }) {
                       {threads.some(t => t.unread > 0) && (
                         <>
                           <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-3 pt-2 pb-1">Unread</p>
-                          {threads.filter(t => t.unread > 0).map(t => <ThreadItem key={t.id} thread={t} onClick={() => setActiveThread(t)} />)}
+                          {threads.filter(t => t.unread > 0).map(t => (
+                            <ThreadItem key={`${t.type}-${t.id}`} thread={t} onClick={() => handleOpenThread(t)} />
+                          ))}
                           <div className="h-px bg-slate-700/60 my-2 mx-3" />
                         </>
                       )}
                       <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-3 pt-1 pb-1">All Active Incidents</p>
-                      {threads.map(t => <ThreadItem key={t.id} thread={t} onClick={() => setActiveThread(t)} />)}
+                      {threads.map(t => (
+                        <ThreadItem key={`${t.type}-${t.id}`} thread={t} onClick={() => handleOpenThread(t)} />
+                      ))}
                     </div>
                   )}
                 </div>
@@ -561,11 +700,17 @@ export default function AdminLayout() {
   const seenEmergencyIds                      = useRef(new Set());
   const isFirstEmergencyLoad                  = useRef(true);
 
+  // FIX: store subscription cleanup fns so they can be properly torn down
+  const alertsChannelRef    = useRef(null);
+  const urgencyChannelRef   = useRef(null);
+  const emergencyNotifRef   = useRef(null);
+
   const navigate = useNavigate();
   const location = useLocation();
 
   const isSysAdmin = userRole === 'system_administrator';
 
+  // ── Inject scrollbar CSS ────────────────────────────────────────────────
   useEffect(() => {
     const styleTag = document.createElement('style');
     styleTag.id = 'admin-scrollbar-styles';
@@ -576,19 +721,21 @@ export default function AdminLayout() {
     return () => { document.getElementById('admin-scrollbar-styles')?.remove(); };
   }, []);
 
-  useEffect(() => { getCurrentUser(); }, []);
-
+  // ── Seed existing emergency IDs to avoid spurious toasts on first load ──
   useEffect(() => {
-    const seedExistingEmergencies = async () => {
+    const seed = async () => {
       const { data } = await supabase.from('emergencies').select('id').order('created_at', { ascending: false }).limit(100);
       (data || []).forEach(e => seenEmergencyIds.current.add(e.id));
       isFirstEmergencyLoad.current = false;
     };
-    seedExistingEmergencies();
+    seed();
     requestNotifPermission();
   }, []);
 
+  // ── Real-time emergency toast notifier ──────────────────────────────────
   useEffect(() => {
+    if (emergencyNotifRef.current) supabase.removeChannel(emergencyNotifRef.current);
+
     const channel = supabase.channel('emergency-live-notifier')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'emergencies' }, (payload) => {
         const emergency = payload.new;
@@ -600,108 +747,174 @@ export default function AdminLayout() {
         setEmergencyToasts(prev => [emergency, ...prev].slice(0, 4));
         fetchUrgentEmergencies();
       }).subscribe();
-    return () => supabase.removeChannel(channel);
+
+    emergencyNotifRef.current = channel;
+    return () => { supabase.removeChannel(channel); emergencyNotifRef.current = null; };
   }, []);
 
   const dismissToast           = useCallback((id) => setEmergencyToasts(prev => prev.filter(e => e.id !== id)), []);
   const viewEmergencyFromToast = useCallback((emergency) => navigate(`/emergency?emergencyId=${emergency.id}`), [navigate]);
 
-  const getCurrentUser = async () => {
+  // ── Fetch helpers ───────────────────────────────────────────────────────
+  const fetchAdminAlerts = useCallback(async (userId) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      setUser(user);
-      if (user) {
-        const { data: adminData } = await supabase.from('admin_users').select('*').eq('auth_user_id', user.id).single();
-        setUserRole(adminData?.role || null);
-        setAdminUser(adminData || null);
-        fetchAdminAlerts(user.id);
-        fetchUrgentEmergencies();
-        subscribeToAdminAlerts(user.id);
-        subscribeToEmergencies();
-      }
-    } catch (err) { console.error('Error getting user:', err); }
-  };
-
-  const fetchAdminAlerts = async (userId) => {
-    try {
-      const { data, error } = await supabase.from('admin_alerts').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(50);
+      const { data, error } = await supabase
+        .from('admin_alerts').select('*')
+        .eq('user_id', userId).order('created_at', { ascending: false }).limit(50);
       if (error) throw error;
       setAdminAlerts(data || []);
       setUnreadCount(data?.filter(a => !a.is_read).length || 0);
     } catch (err) { console.error('Error fetching alerts:', err); }
-  };
+  }, []);
 
-  const fetchUrgentEmergencies = async () => {
+  const fetchUrgentEmergencies = useCallback(async () => {
     try {
-      const { count, error } = await supabase.from('emergencies').select('*', { count: 'exact', head: true }).in('severity', ['urgent', 'high']).eq('status', 'pending');
+      const { count, error } = await supabase
+        .from('emergencies').select('*', { count: 'exact', head: true })
+        .in('status', ['pending', 'dispatched'])
+        .in('severity', ['high', 'critical']);
       if (error) throw error;
       setUrgentEmergenciesCount(count || 0);
     } catch (err) { console.error('Error fetching emergencies:', err); }
-  };
+  }, []);
 
-  const subscribeToAdminAlerts = (userId) => {
+  // ── Subscribe to admin_alerts in real-time ──────────────────────────────
+  const subscribeToAdminAlerts = useCallback((userId) => {
+    // Clean up previous channel if any
+    if (alertsChannelRef.current) supabase.removeChannel(alertsChannelRef.current);
+
     const channel = supabase.channel('admin-alerts-' + userId)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'admin_alerts', filter: `user_id=eq.${userId}` }, (payload) => {
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'admin_alerts',
+        filter: `user_id=eq.${userId}`,
+      }, (payload) => {
         if (payload.eventType === 'INSERT') {
           setAdminAlerts(prev => [payload.new, ...prev]);
           setUnreadCount(prev => prev + 1);
-          if (payload.new.severity === 'urgent' && 'Notification' in window) {
-            Notification.requestPermission().then(p => { if (p === 'granted') new Notification(payload.new.title, { body: payload.new.message, icon: '/favicon.ico' }); });
+          // Push browser notification for urgent alerts
+          if (payload.new.severity === 'urgent') {
+            requestNotifPermission().then(granted => {
+              if (granted) new Notification(payload.new.title, { body: payload.new.message, icon: '/favicon.ico' });
+            });
           }
         } else if (payload.eventType === 'UPDATE') {
           setAdminAlerts(prev => prev.map(a => a.id === payload.new.id ? payload.new : a));
-          setUnreadCount(prev => payload.new.is_read && !payload.old.is_read ? prev - 1 : prev);
+          // Decrement count only when transitioning unread → read
+          if (payload.new.is_read && !payload.old.is_read) {
+            setUnreadCount(prev => Math.max(0, prev - 1));
+          }
         } else if (payload.eventType === 'DELETE') {
           setAdminAlerts(prev => prev.filter(a => a.id !== payload.old.id));
           if (!payload.old.is_read) setUnreadCount(prev => Math.max(0, prev - 1));
         }
       }).subscribe();
-    return () => supabase.removeChannel(channel);
+
+    alertsChannelRef.current = channel;
+  }, []);
+
+  // ── Subscribe to emergencies for urgent badge ───────────────────────────
+  const subscribeToUrgencyBadge = useCallback(() => {
+    if (urgencyChannelRef.current) supabase.removeChannel(urgencyChannelRef.current);
+
+    const channel = supabase.channel('emergencies-urgent-badge')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'emergencies' }, fetchUrgentEmergencies)
+      .subscribe();
+
+    urgencyChannelRef.current = channel;
+  }, [fetchUrgentEmergencies]);
+
+  // ── Get current admin user ──────────────────────────────────────────────
+  const getCurrentUser = useCallback(async () => {
+    try {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      setUser(authUser);
+      if (authUser) {
+        const { data: adminData } = await supabase
+          .from('admin_users').select('*').eq('auth_user_id', authUser.id).single();
+        setUserRole(adminData?.role || null);
+        setAdminUser(adminData || null);
+        fetchAdminAlerts(authUser.id);
+        fetchUrgentEmergencies();
+        subscribeToAdminAlerts(authUser.id);
+        subscribeToUrgencyBadge();
+      }
+    } catch (err) { console.error('Error getting user:', err); }
+  }, [fetchAdminAlerts, fetchUrgentEmergencies, subscribeToAdminAlerts, subscribeToUrgencyBadge]);
+
+  useEffect(() => {
+    getCurrentUser();
+    // Cleanup all subscriptions on unmount
+    return () => {
+      if (alertsChannelRef.current)  supabase.removeChannel(alertsChannelRef.current);
+      if (urgencyChannelRef.current) supabase.removeChannel(urgencyChannelRef.current);
+    };
+  }, []);
+
+  // ── Alert handlers ──────────────────────────────────────────────────────
+  const handleMarkAsRead = async (alert) => {
+    try {
+      await supabase.from('admin_alerts').update({ is_read: true }).eq('id', alert.id);
+      setAlertPanelOpen(false);
+      if (alert.link) navigate(alert.link);
+    } catch (err) { console.error(err); }
   };
 
-  const subscribeToEmergencies = () => {
-    const channel = supabase.channel('emergencies-urgent').on('postgres_changes', { event: '*', schema: 'public', table: 'emergencies' }, fetchUrgentEmergencies).subscribe();
-    return () => supabase.removeChannel(channel);
+  const handleMarkAllAsRead = async () => {
+    if (!user) return;
+    try {
+      await supabase.from('admin_alerts').update({ is_read: true })
+        .eq('user_id', user.id).eq('is_read', false);
+      setUnreadCount(0);
+      setAdminAlerts(prev => prev.map(a => ({ ...a, is_read: true })));
+    } catch (err) { console.error(err); }
   };
 
-  const handleMarkAsRead    = async (alert) => { try { await supabase.from('admin_alerts').update({ is_read: true }).eq('id', alert.id); setAlertPanelOpen(false); if (alert.link) navigate(alert.link); } catch (err) { console.error(err); } };
-  const handleMarkAllAsRead = async () => { if (!user) return; try { await supabase.from('admin_alerts').update({ is_read: true }).eq('user_id', user.id).eq('is_read', false); setUnreadCount(0); } catch (err) { console.error(err); } };
-  const handleDeleteAlert   = async (alertId) => { try { await supabase.from('admin_alerts').delete().eq('id', alertId); } catch (err) { console.error(err); } };
+  const handleDeleteAlert = async (alertId) => {
+    try {
+      await supabase.from('admin_alerts').delete().eq('id', alertId);
+    } catch (err) { console.error(err); }
+  };
 
+  // ── Scroll shadow ───────────────────────────────────────────────────────
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20);
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
+  // ── Auto-expand sidebar dropdowns based on active route ─────────────────
   useEffect(() => {
     if (location.pathname === '/reports' || location.pathname === '/evidence') setReportsDropdownOpen(true);
     if (location.pathname === '/emergency' || location.pathname === '/emergency-evidence') setEmergencyDropdownOpen(true);
   }, [location.pathname]);
 
-  // ── Nav items — Feedback added after Analytics ────────────────────────────
+  // ── Nav config ──────────────────────────────────────────────────────────
   const ALL_NAV_ITEMS = [
-    { icon: Home,          label: 'Dashboard',    path: '/dashboard',     description: 'Overview'            },
-    { icon: FileText,      label: 'Reports',      path: '/reports',       description: 'User reports',       hasDropdown: true, submenu: [{ icon: Camera, label: 'Evidence', path: '/evidence', description: 'Completion photos' }] },
-    { icon: Bell,          label: 'Emergency',    path: '/emergency',     description: 'Active alerts',      badge: urgentEmergenciesCount, urgent: urgentEmergenciesCount > 0, hasDropdown: true, submenu: [{ icon: Camera, label: 'Evidence', path: '/emergency-evidence', description: 'Completion photos' }] },
-    { icon: ClipboardList, label: 'Services',     path: '/services',      description: 'Document requests'  },
-    { icon: Users,         label: 'Residents',    path: '/residents',     description: 'Manage users',      sysAdminOnly: true },
-    { icon: MessageSquare, label: 'Announcements',path: '/announcements', description: 'Community posts'    },
-    { icon: BarChart3,     label: 'Analytics',    path: '/analytics',     description: 'Insights'           },
-    { icon: Star,          label: 'Feedback',     path: '/feedback',      description: 'Ratings & reviews'  }, // ← NEW
-    { icon: Shield,        label: 'Audit Logs',   path: '/audit-logs',    description: 'Track actions',     sysAdminOnly: true },
-    { icon: UserCog,       label: 'Admin Users',  path: '/admin-users',   description: 'Manage admins',     sysAdminOnly: true },
+    { icon: Home,          label: 'Dashboard',     path: '/dashboard',          description: 'Overview'           },
+    { icon: FileText,      label: 'Reports',        path: '/reports',            description: 'User reports',      hasDropdown: true, submenu: [{ icon: Camera, label: 'Evidence', path: '/evidence', description: 'Completion photos' }] },
+    { icon: Bell,          label: 'Emergency',      path: '/emergency',          description: 'Active alerts',     badge: urgentEmergenciesCount, urgent: urgentEmergenciesCount > 0, hasDropdown: true, submenu: [{ icon: Camera, label: 'Evidence', path: '/emergency-evidence', description: 'Completion photos' }] },
+    { icon: ClipboardList, label: 'Services',       path: '/services',           description: 'Document requests' },
+    { icon: Users,         label: 'Residents',      path: '/residents',          description: 'Manage users',      sysAdminOnly: true },
+    { icon: MessageSquare, label: 'Announcements',  path: '/announcements',      description: 'Community posts'   },
+    { icon: BarChart3,     label: 'Analytics',      path: '/analytics',          description: 'Insights'          },
+    { icon: Star,          label: 'Feedback',       path: '/feedback',           description: 'Ratings & reviews' },
+    { icon: Shield,        label: 'Audit Logs',     path: '/audit-logs',         description: 'Track actions',    sysAdminOnly: true },
+    { icon: UserCog,       label: 'Admin Users',    path: '/admin-users',        description: 'Manage admins',    sysAdminOnly: true },
   ];
 
-  const navItems          = ALL_NAV_ITEMS.filter(item => !item.sysAdminOnly || isSysAdmin);
-  const RESTRICTED_PATHS  = ['/residents', '/audit-logs', '/admin-users'];
-  const isRestrictedPage  = RESTRICTED_PATHS.includes(location.pathname);
-  const showUnauthorized  = isRestrictedPage && userRole !== null && !isSysAdmin;
+  const navItems         = ALL_NAV_ITEMS.filter(item => !item.sysAdminOnly || isSysAdmin);
+  const RESTRICTED_PATHS = ['/residents', '/audit-logs', '/admin-users'];
+  const isRestrictedPage = RESTRICTED_PATHS.includes(location.pathname);
+  const showUnauthorized = isRestrictedPage && userRole !== null && !isSysAdmin;
 
   const handleLogout = async () => {
     try {
       await logAuditAction({ action: 'logout', actionType: 'auth', description: `Admin logged out: ${user?.email}`, severity: 'info' });
       setUserMenuOpen(false);
+      // Clean up subscriptions before sign-out
+      if (alertsChannelRef.current)  supabase.removeChannel(alertsChannelRef.current);
+      if (urgencyChannelRef.current) supabase.removeChannel(urgencyChannelRef.current);
+      if (emergencyNotifRef.current) supabase.removeChannel(emergencyNotifRef.current);
       await supabase.auth.signOut();
       navigate('/login', { replace: true });
     } catch (err) { console.error('Logout error:', err); }
@@ -709,7 +922,11 @@ export default function AdminLayout() {
 
   const isActive        = (path)    => location.pathname === path;
   const isSubmenuActive = (submenu) => submenu?.some(item => location.pathname === item.path) ?? false;
-  const toggleDropdown  = (e, type) => { e.stopPropagation(); if (type === 'reports') setReportsDropdownOpen(p => !p); if (type === 'emergency') setEmergencyDropdownOpen(p => !p); };
+  const toggleDropdown  = (e, type) => {
+    e.stopPropagation();
+    if (type === 'reports')   setReportsDropdownOpen(p => !p);
+    if (type === 'emergency') setEmergencyDropdownOpen(p => !p);
+  };
 
   const userName    = user?.user_metadata?.name || user?.email?.split('@')[0] || 'Admin User';
   const userEmail   = user?.email || 'admin@barangay.gov';
@@ -718,6 +935,7 @@ export default function AdminLayout() {
   return (
     <div className="min-h-screen bg-slate-50 flex">
 
+      {/* ── Sidebar ── */}
       <aside className={`fixed lg:sticky lg:top-0 lg:h-screen inset-y-0 left-0 z-50 w-64 bg-slate-900 border-r border-slate-700 flex flex-col transform transition-all duration-300 ease-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
         <div className="flex-shrink-0 px-5 py-4 border-b border-slate-700 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -749,8 +967,10 @@ export default function AdminLayout() {
               const dropOpen     = item.label === 'Reports' ? reportsDropdownOpen : item.label === 'Emergency' ? emergencyDropdownOpen : false;
               return (
                 <div key={item.path}>
-                  <button onClick={() => { navigate(item.path); setSidebarOpen(false); }}
-                    className={`w-full group flex items-center justify-between px-3 py-2.5 rounded transition-all duration-150 ${showActive ? 'bg-slate-700 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'}`}>
+                  <button
+                    onClick={() => { navigate(item.path); setSidebarOpen(false); }}
+                    className={`w-full group flex items-center justify-between px-3 py-2.5 rounded transition-all duration-150 ${showActive ? 'bg-slate-700 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'}`}
+                  >
                     <div className="flex items-center gap-3 flex-1 min-w-0">
                       <div className={`w-0.5 h-5 rounded-full flex-shrink-0 transition-all ${showActive ? 'bg-white' : 'bg-transparent'}`} />
                       <item.icon className={`w-4 h-4 flex-shrink-0 ${showActive ? 'text-white' : 'text-slate-500 group-hover:text-slate-300'}`} />
@@ -802,6 +1022,7 @@ export default function AdminLayout() {
 
       {sidebarOpen && <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />}
 
+      {/* ── Main content ── */}
       <div className="flex-1 flex flex-col min-h-screen min-w-0">
         <header className={`bg-white border-b border-slate-200 sticky top-0 z-30 transition-shadow duration-300 ${scrolled ? 'shadow-md' : 'shadow-sm'}`}>
           <div className="flex items-center justify-between px-6 py-3.5">
@@ -824,19 +1045,34 @@ export default function AdminLayout() {
                 <kbd className="hidden lg:inline-block px-1.5 py-0.5 text-xs bg-white rounded border border-slate-300 text-slate-500 font-mono">⌘K</kbd>
               </div>
 
+              {/* Alert bell */}
               <div className="relative">
                 <button onClick={() => setAlertPanelOpen(p => !p)} className="relative p-2 text-slate-600 hover:bg-slate-100 border border-slate-200 rounded transition-all group">
                   <Bell className="w-4 h-4 group-hover:text-slate-900 transition-colors" />
                   {unreadCount > 0 && (
                     <>
-                      <span className="absolute top-1 right-1 flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-red-500 ring-2 ring-white"></span></span>
-                      <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-4 h-4 flex items-center justify-center leading-none">{unreadCount > 9 ? '9+' : unreadCount}</span>
+                      <span className="absolute top-1 right-1 flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500 ring-2 ring-white"></span>
+                      </span>
+                      <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-4 h-4 flex items-center justify-center leading-none">
+                        {unreadCount > 9 ? '9+' : unreadCount}
+                      </span>
                     </>
                   )}
                 </button>
-                {alertPanelOpen && <AlertPanel alerts={adminAlerts} onClose={() => setAlertPanelOpen(false)} onMarkAsRead={handleMarkAsRead} onMarkAllAsRead={handleMarkAllAsRead} onDelete={handleDeleteAlert} />}
+                {alertPanelOpen && (
+                  <AlertPanel
+                    alerts={adminAlerts}
+                    onClose={() => setAlertPanelOpen(false)}
+                    onMarkAsRead={handleMarkAsRead}
+                    onMarkAllAsRead={handleMarkAllAsRead}
+                    onDelete={handleDeleteAlert}
+                  />
+                )}
               </div>
 
+              {/* User menu */}
               <div className="relative">
                 <button onClick={() => setUserMenuOpen(p => !p)} className="flex items-center gap-2.5 px-3 py-2 hover:bg-slate-100 border border-slate-200 rounded transition-all">
                   <div className="relative flex-shrink-0">
@@ -895,6 +1131,7 @@ export default function AdminLayout() {
         </footer>
       </div>
 
+      {/* ── Emergency toasts ── */}
       <div className="fixed top-4 right-4 z-[9999] flex flex-col gap-3 pointer-events-none">
         {emergencyToasts.map((emergency) => (
           <div key={emergency.id} className="pointer-events-auto">

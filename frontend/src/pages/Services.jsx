@@ -1,5 +1,6 @@
 // src/pages/Services.jsx
 import {
+  AlertOctagon,
   AlertTriangle,
   Banknote,
   Building2,
@@ -25,7 +26,7 @@ import { useCallback, useEffect, useState } from "react";
 import { supabase } from "../config/supabase";
 import { logAuditAction } from "../utils/auditLogger";
 import { generateCertificate, hasDocxTemplate } from "../utils/generateCertificate";
-import leftHeaderImg  from "../assets/QuezonCityLeftSideHeader_Image.png";
+import leftHeaderImg from "../assets/QuezonCityLeftSideHeader_Image.png";
 import rightHeaderImg from "../assets/SalvacionRightHeader_Image.png";
 import { getBase64FromUrl } from "../utils/imageHelpers";
 
@@ -33,20 +34,20 @@ import { getBase64FromUrl } from "../utils/imageHelpers";
 let headerImageCache = null;
 const loadHeaderImages = async () => {
   if (headerImageCache) return headerImageCache;
-  const left  = await getBase64FromUrl(leftHeaderImg);
+  const left = await getBase64FromUrl(leftHeaderImg);
   const right = await getBase64FromUrl(rightHeaderImg);
   headerImageCache = { left, right };
   return headerImageCache;
 };
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-// DB key "permit_to_roast" kept for constraint compatibility; label = "Business Permit"
 const SERVICE_TYPES = [
-  { id: "barangay_id",           label: "Barangay ID",       icon: CreditCard,  color: "bg-blue-50 text-blue-700 border-blue-300"      },
-  { id: "barangay_clearance",    label: "Barangay Clearance", icon: ShieldCheck, color: "bg-green-50 text-green-700 border-green-300"    },
-  { id: "certificate_indigency", label: "Cert. of Indigency", icon: Banknote,    color: "bg-pink-50 text-pink-700 border-pink-300"       },
-  { id: "business_clearance",    label: "Business Clearance", icon: Building2,   color: "bg-teal-50 text-teal-700 border-teal-300"       },
-  { id: "permit_to_roast",       label: "Business Permit",    icon: ScrollText,  color: "bg-violet-50 text-violet-700 border-violet-300" },
+  { id: "barangay_id",           label: "Barangay ID",       icon: CreditCard,   color: "bg-blue-50 text-blue-700 border-blue-300"       },
+  { id: "barangay_clearance",    label: "Barangay Clearance", icon: ShieldCheck,  color: "bg-green-50 text-green-700 border-green-300"     },
+  { id: "certificate_indigency", label: "Cert. of Indigency", icon: Banknote,     color: "bg-pink-50 text-pink-700 border-pink-300"        },
+  { id: "business_clearance",    label: "Business Clearance", icon: Building2,    color: "bg-teal-50 text-teal-700 border-teal-300"        },
+  { id: "permit_to_roast",       label: "Business Permit",    icon: ScrollText,   color: "bg-violet-50 text-violet-700 border-violet-300"  },
+  { id: "blotter",               label: "Blotter / Incident", icon: AlertOctagon, color: "bg-orange-50 text-orange-700 border-orange-300"  },
 ];
 
 const STATUS_CONFIG = {
@@ -57,31 +58,55 @@ const STATUS_CONFIG = {
 };
 
 const FIELD_LABELS = {
-  full_name:         "Full Name",
-  address:           "Address",
-  date_of_birth:     "Date of Birth",
-  place_of_birth:    "Place of Birth",
-  gender:            "Gender",
-  civil_status:      "Civil Status",
-  contact_number:    "Contact Number",
-  date_of_residency: "Date of Residency",
-  residency_status:  "Residency Status",
-  purpose:           "Purpose",
-  age:               "Age",
-  assistance_type:   "Type of Assistance",
-  business_name:     "Business Name",
-  business_address:  "Business Address",
-  business_type:     "Nature of Business / Activity",
-  ctc_no:            "CTC No.",
+  full_name:          "Complainant Name",
+  address:            "Complainant Address",
+  contact_number:     "Complainant Contact",
+  respondent_name:    "Respondent Name",
+  respondent_address: "Respondent Address",
+  incident_type:      "Incident Type",
+  incident_date:      "Incident Date",
+  incident_location:  "Incident Location",
+  narrative:          "Narrative",
+  date_of_birth:      "Date of Birth",
+  place_of_birth:     "Place of Birth",
+  gender:             "Gender",
+  civil_status:       "Civil Status",
+  date_of_residency:  "Date of Residency",
+  residency_status:   "Residency Status",
+  purpose:            "Purpose",
+  age:                "Age",
+  assistance_type:    "Type of Assistance",
+  business_name:      "Business Name",
+  business_address:   "Business Address",
+  business_type:      "Nature of Business / Activity",
+  ctc_no:             "CTC No.",
 };
 
 const SERVICE_FIELDS = {
-  barangay_id:           ["full_name","address","date_of_birth","place_of_birth","gender","civil_status","contact_number","date_of_residency","purpose"],
-  barangay_clearance:    ["full_name","address","date_of_birth","place_of_birth","gender","civil_status","contact_number","date_of_residency","residency_status","ctc_no","purpose"],
-  certificate_indigency: ["full_name","address","age","gender","contact_number","purpose","assistance_type"],
-  business_clearance:    ["full_name","contact_number","business_name","business_address","business_type","purpose"],
-  // Business Permit — no items_to_roast; uses business_type for nature of activity
-  permit_to_roast:       ["full_name","address","contact_number","business_name","business_address","business_type","purpose"],
+  barangay_id: [
+    "full_name", "address", "date_of_birth", "place_of_birth", "gender",
+    "civil_status", "contact_number", "date_of_residency", "purpose"
+  ],
+  barangay_clearance: [
+    "full_name", "address", "date_of_birth", "place_of_birth", "gender",
+    "civil_status", "contact_number", "date_of_residency", "residency_status",
+    "ctc_no", "purpose"
+  ],
+  certificate_indigency: [
+    "full_name", "address", "age", "gender", "contact_number", "purpose", "assistance_type"
+  ],
+  business_clearance: [
+    "full_name", "contact_number", "business_name", "business_address", "business_type", "purpose"
+  ],
+  permit_to_roast: [
+    "full_name", "address", "contact_number", "business_name", "business_address", "business_type", "purpose"
+  ],
+  blotter: [
+    "full_name", "address", "contact_number",
+    "respondent_name", "respondent_address",
+    "incident_type", "incident_date",
+    "incident_location", "narrative"
+  ],
 };
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
@@ -92,6 +117,7 @@ function generateControlNumber(serviceType) {
     certificate_indigency: "COI",
     business_clearance:    "BCB",
     permit_to_roast:       "BPC",
+    blotter:               "BLT",
   }[serviceType] || "SRV";
   const now  = new Date();
   const yyyy = now.getFullYear();
@@ -198,17 +224,27 @@ function StatusTimeline({ currentStatus }) {
   );
 }
 
-// ─── Verification Panel ───────────────────────────────────────────────────────
+// ─── Verification Panel (supports blotter fields) ─────────────────────────────
 function VerificationPanel({ request }) {
-  const checks = [
-    { label: "Applicant Photo",    hint: "2×2 ID photo submitted",      passed: !!request.photo_2x2_url,          link: request.photo_2x2_url,    linkLabel: "View Photo"      },
-    { label: "Digital Signature",  hint: "Applicant signature on file",  passed: !!request.signature_url,          link: request.signature_url,    linkLabel: "View Signature"  },
-    { label: "Purpose Stated",     hint: "Applicant provided a purpose", passed: !!(request.purpose?.trim())                                                                     },
-    { label: "Contact Number",     hint: "Valid contact number on record",passed: !!(request.contact_number?.trim())                                                              },
-    ...(request.business_name != null
-      ? [{ label: "Business Name", hint: "Business name provided",       passed: !!(request.business_name?.trim()) }]
-      : []),
-  ];
+  const isBlotter = request.service_type === "blotter";
+
+  const checks = isBlotter
+    ? [
+        { label: "Complainant Info",  hint: "Name & contact provided",   passed: !!(request.full_name?.trim() && request.contact_number?.trim()) },
+        { label: "Respondent Info",   hint: "Respondent name provided",  passed: !!(request.respondent_name?.trim()) },
+        { label: "Incident Details",  hint: "Type, date & location",     passed: !!(request.incident_type?.trim() && request.incident_date && request.incident_location?.trim()) },
+        { label: "Narrative",         hint: "Full description of incident", passed: !!(request.narrative?.trim()) },
+      ]
+    : [
+        { label: "Applicant Photo",    hint: "2×2 ID photo submitted",      passed: !!request.photo_2x2_url,          link: request.photo_2x2_url,    linkLabel: "View Photo"      },
+        { label: "Digital Signature",  hint: "Applicant signature on file",  passed: !!request.signature_url,          link: request.signature_url,    linkLabel: "View Signature"  },
+        { label: "Purpose Stated",     hint: "Applicant provided a purpose", passed: !!(request.purpose?.trim())                                                     },
+        { label: "Contact Number",     hint: "Valid contact number on record",passed: !!(request.contact_number?.trim())                                          },
+        ...(request.business_name != null
+          ? [{ label: "Business Name", hint: "Business name provided",       passed: !!(request.business_name?.trim()) }]
+          : []),
+      ];
+
   const passCount = checks.filter((c) => c.passed).length;
   const allPassed = passCount === checks.length;
 
@@ -244,7 +280,7 @@ function VerificationPanel({ request }) {
   );
 }
 
-// ─── View / Process Modal ─────────────────────────────────────────────────────
+// ─── View / Process Modal (unchanged except it now displays blotter fields via SERVICE_FIELDS) ─────────────────────────────────────────
 function RequestModal({ request, onClose, onSave, saving }) {
   const [status,          setStatus]          = useState(request.status);
   const [adminNotes,      setAdminNotes]      = useState(request.admin_notes  || "");
@@ -258,6 +294,7 @@ function RequestModal({ request, onClose, onSave, saving }) {
   const isApproving   = status === "approved";
   const isRejecting   = status === "rejected";
   const statusChanged = status !== request.status;
+  const isBlotter     = request.service_type === "blotter";
 
   const handleGenerateDocx = async () => {
     setGenerating(true);
@@ -310,7 +347,6 @@ function RequestModal({ request, onClose, onSave, saving }) {
             <span className="text-xs text-slate-400 font-mono mb-1 block tracking-widest">
               {request.control_number ? `CTRL · ${request.control_number}` : "Control No. Pending Assignment"}
             </span>
-            {/* Always show the human-readable label from SERVICE_TYPES */}
             <h2 className="text-base font-bold text-white">
               {SERVICE_TYPES.find((s) => s.id === request.service_type)?.label || request.service_title}
             </h2>
@@ -337,19 +373,24 @@ function RequestModal({ request, onClose, onSave, saving }) {
           <div className="border border-slate-200 rounded-lg overflow-hidden">
             <div className="bg-slate-50 border-b border-slate-200 px-4 py-2.5">
               <p className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center gap-2">
-                <Users className="w-3.5 h-3.5" />Applicant Information
+                <Users className="w-3.5 h-3.5" />
+                {isBlotter ? "Complainant & Incident Details" : "Applicant Information"}
               </p>
             </div>
             <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
               {fields.map((field) => {
                 const val = request[field];
+                // Display "Date of Incident" as formatted date
+                const display = field === "incident_date" && val
+                  ? new Date(val).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })
+                  : val;
                 if (!val && val !== 0) return null;
                 return (
                   <div key={field}>
                     <p className="text-xs text-slate-400 uppercase tracking-wide font-semibold mb-0.5">
                       {FIELD_LABELS[field] || field}
                     </p>
-                    <p className="text-sm text-slate-800 font-medium">{val}</p>
+                    <p className="text-sm text-slate-800 font-medium">{display}</p>
                   </div>
                 );
               })}
@@ -466,12 +507,12 @@ function RequestModal({ request, onClose, onSave, saving }) {
               {/* Admin Notes */}
               <div>
                 <label className="block text-xs font-bold text-slate-600 uppercase tracking-widest mb-1.5">
-                  {isRejecting ? "Additional Remarks (Optional)" : "Admin Notes / Remarks"}
+                  {isRejecting ? "Additional Remarks (Optional)" : isBlotter ? "Barangay Action / Remarks" : "Admin Notes / Remarks"}
                 </label>
                 <textarea
                   value={adminNotes}
                   onChange={(e) => setAdminNotes(e.target.value)}
-                  placeholder={isRejecting ? "Any additional remarks for the applicant..." : "Add notes for the applicant..."}
+                  placeholder={isRejecting ? "Any additional remarks for the applicant..." : isBlotter ? "e.g. Summoned both parties, mediation scheduled..." : "Add notes for the applicant..."}
                   rows={3}
                   className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-400 resize-none"
                 />
@@ -501,7 +542,7 @@ function RequestModal({ request, onClose, onSave, saving }) {
           <button onClick={onClose} className="px-4 py-2 text-sm font-semibold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">
             Cancel
           </button>
-          {request.status === "approved" && hasDocxTemplate(request.service_type) && (
+          {(request.status === "approved" || isApproving) && hasDocxTemplate(request.service_type) && (
             <button
               onClick={handleGenerateDocx}
               disabled={generating}
@@ -629,7 +670,8 @@ export default function Services() {
       r.service_title?.toLowerCase().includes(q) ||
       r.control_number?.toLowerCase().includes(q) ||
       r.contact_number?.includes(q) ||
-      r.business_name?.toLowerCase().includes(q);
+      r.business_name?.toLowerCase().includes(q) ||
+      r.respondent_name?.toLowerCase().includes(q);  // blotter search
     const matchStatus = statusFilter === "all" || r.status === statusFilter;
     const matchType   = typeFilter   === "all" || r.service_type === typeFilter;
     return matchSearch && matchStatus && matchType;
@@ -701,7 +743,7 @@ export default function Services() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <input
               type="text"
-              placeholder="Search by name, business, control number, or contact..."
+              placeholder="Search by name, business, control number, respondent, contact..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-9 pr-4 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white text-slate-800"
@@ -828,10 +870,13 @@ export default function Services() {
                     {/* Applicant */}
                     <td className="px-4 py-3">
                       <p className="text-sm font-semibold text-slate-800">{req.full_name}</p>
+                      {req.service_type === "blotter" && req.respondent_name && (
+                        <p className="text-xs text-slate-500">vs. {req.respondent_name}</p>
+                      )}
                       <p className="text-xs text-slate-400">{req.contact_number}</p>
                     </td>
 
-                    {/* Service Type — uses badge which maps to correct label */}
+                    {/* Service Type */}
                     <td className="px-4 py-3">
                       <ServiceTypeBadge serviceType={req.service_type} />
                     </td>
@@ -847,7 +892,14 @@ export default function Services() {
                       {req.assistance_type && (
                         <p className="text-xs text-slate-600 truncate">💊 {req.assistance_type}</p>
                       )}
-                      {/* Legacy records may still have items_to_roast */}
+                      {req.incident_type && (
+                        <p className="text-xs text-slate-600 truncate">⚠️ {req.incident_type}</p>
+                      )}
+                      {req.incident_date && (
+                        <p className="text-xs text-slate-500">
+                          {new Date(req.incident_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                        </p>
+                      )}
                       {req.items_to_roast && (
                         <p className="text-xs text-slate-500 truncate italic">📋 {req.items_to_roast}</p>
                       )}
